@@ -4,6 +4,9 @@ mod test;
 
 use std::ops::{ Index, IndexMut };
 
+use crate::slice::Slice;
+
+#[derive(Debug)]
 pub enum Error {
     MismatchedSizes,
     MismatchedShapes,
@@ -24,6 +27,13 @@ where
         Tensor { shape, data }
     }
 
+    pub fn from( shape: [ usize; N ], data: Vec<T> ) -> Result<Self, Error> {
+        if data.len() != shape.iter().fold( 1, |acc, &x| acc * x ) {
+            return Err( Error::MismatchedSizes );
+        }
+        Ok( Tensor { shape, data } )
+    }
+
     pub fn dim( &self ) -> usize {
         self.shape.len()
     }
@@ -34,6 +44,10 @@ where
 
     pub fn shape( &self ) -> [ usize; N ] {
         self.shape
+    }
+
+    pub fn slice<'a>(&'a mut self, start: [usize; N], end: [usize; N], strides: [usize; N]) -> Slice<'a, T, N> {
+        Slice::new(self, start, end, strides)
     }
 
     pub fn reshape( &mut self, shape: [ usize; N ] ) -> Result<(), Error> {
@@ -81,100 +95,48 @@ where
         }
         flat_index
     }
-
-    pub fn tensor_mult( lhs: &Tensor<T, N>, rhs: &Tensor<T, N> ) -> Result<Tensor<T, N>, Error>
-    where
-        T: Default + Clone + PartialEq + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
-    {
-        if lhs.shape != rhs.shape {
-            return Err( Error::MismatchedShapes );
-        }
-        let mut result = Tensor::new( lhs.shape );
-        for i in 0..lhs.data.len() {
-            result.data[ i ] = lhs.data[ i ].clone() * rhs.data[ i ].clone();
-        }
-        Ok( result )
-    }
-
-    pub fn tensor_add( lhs: &Tensor<T, N>, rhs: &Tensor<T, N> ) -> Result<Tensor<T, N>, Error>
-    where
-        T: Default + Clone + PartialEq + std::ops::Add<Output = T>,
-    {
-        if lhs.shape != rhs.shape {
-            return Err( Error::MismatchedShapes );
-        }
-        let mut result = Tensor::new( lhs.shape );
-        for i in 0..lhs.data.len() {
-            result.data[ i ] = lhs.data[ i ].clone() + rhs.data[ i ].clone();
-        }
-        Ok( result )
-    }
-
-    pub fn tensor_sub( lhs: &Tensor<T, N>, rhs: &Tensor<T, N> ) -> Result<Tensor<T, N>, Error>
-    where
-        T: Default + Clone + PartialEq + std::ops::Sub<Output = T>,
-    {
-        if lhs.shape != rhs.shape {
-            return Err( Error::MismatchedShapes );
-        }
-        let mut result = Tensor::new( lhs.shape );
-        for i in 0..lhs.data.len() {
-            result.data[ i ] = lhs.data[ i ].clone() - rhs.data[ i ].clone();
-        }
-        Ok( result )
-    }
-
-    pub fn tensor_div( lhs: &Tensor<T, N>, rhs: &Tensor<T, N> ) -> Result<Tensor<T, N>, Error>
-    where
-        T: Default + Clone + PartialEq + std::ops::Div<Output = T>,
-    {
-        if lhs.shape != rhs.shape {
-            return Err( Error::MismatchedShapes );
-        }
-        let mut result = Tensor::new( lhs.shape );
-        for i in 0..lhs.data.len() {
-            result.data[ i ] = lhs.data[ i ].clone() / rhs.data[ i ].clone();
-        }
-        Ok( result )
-    }
-
-    pub fn tensor_contraction( lhs: &Tensor<T, N>, rhs: &Tensor<T, N>, i: usize, j: usize  ) -> Result<Tensor<T, N>, Error>
-    where
-        T: Default + Clone + PartialEq + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
-    {
-        if lhs.shape[ 1 ] != rhs.shape[ 0 ] {
-            return Err( Error::MismatchedShapes );
-        }
-        let mut result = Tensor::new( [ lhs.shape[ i ], rhs.shape[ j ] ] );
-        for i in 0..lhs.shape[ i ] {
-            for j in 0..rhs.shape[ j ] {
-                for k in 0..lhs.shape[ j ] {
-                    result[ [ i, j ] ] = result[ [ i, j ] ].clone() + lhs[ [ i, k ] ].clone() * rhs[ [ k, j ] ].clone();
-                }
-            }
-        }
-        Ok( result )
-    }
 }
 
-impl<T, const N: usize> Index<[ usize; N ]> for Tensor<T, N>
+// Dimensional Indexing
+impl<T, const N: usize> Index<[usize; N]> for Tensor<T, N>
 where
     T: Default + Clone + PartialEq,
 {
     type Output = T;
 
-    fn index( &self, index: [ usize; N ] ) -> &Self::Output {
-        let flat_index = self.calculate_flat_index( &index );
-        &self.data[ flat_index ]
+    fn index(&self, index: [usize; N]) -> &Self::Output {
+        let flat_index = self.calculate_flat_index(&index);
+        &self.data[flat_index]
     }
 }
 
-impl<T, const N: usize> IndexMut<[ usize; N ]> for Tensor<T, N>
+impl<T, const N: usize> IndexMut<[usize; N]> for Tensor<T, N>
 where
     T: Default + Clone + PartialEq,
 {
-    fn index_mut( &mut self, index: [ usize; N ] ) -> &mut Self::Output {
-        let flat_index = self.calculate_flat_index( &index );
-        &mut self.data[ flat_index ]
+    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
+        let flat_index = self.calculate_flat_index(&index);
+        &mut self.data[flat_index]
+    }
+}
+
+// Flat Indexing
+impl<T, const N: usize> Index<usize> for Tensor<T, N>
+where
+    T: Default + Clone + PartialEq,
+{
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<T, const N: usize> IndexMut<usize> for Tensor<T, N>
+where
+    T: Default + Clone + PartialEq,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
     }
 }
