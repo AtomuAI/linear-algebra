@@ -34,7 +34,6 @@ fn test() -> Result<(), Error>{
         print!( "\n" );
     }
     let tensor_2 = slice.tensor()?;
-    /*
     for k in 0..2 {
         for j in 0..3 {
             for i in 0..1 {
@@ -44,6 +43,5 @@ fn test() -> Result<(), Error>{
         }
         print!( "\n" );
     }
-    */
     Ok( () )
 }

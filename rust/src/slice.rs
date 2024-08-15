@@ -45,9 +45,8 @@ where
     }
 
     pub fn tensor(&self) -> Result<Tensor<T, N>, Error> {
-        let data = Vec::with_capacity(self.size());
         let shape = self.shape();
-        let mut tensor = Tensor::from( shape, data )?;
+        let mut tensor = Tensor::new( shape );
         for i in 0..self.size() {
             let mut index = [0; N];
             let mut stride = 1;
