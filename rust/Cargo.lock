@@ -3,7 +3,22 @@
 version = 3
 
 [[package]]
-name = "bewusstsein-linear-algebra"
+name = "bewusstsein"
+version = "0.1.0"
+dependencies = [
+ "memory",
+]
+
+[[package]]
+name = "linear-algebra"
+version = "0.1.0"
+dependencies = [
+ "bewusstsein",
+ "thiserror",
+]
+
+[[package]]
+name = "memory"
 version = "0.1.0"
 dependencies = [
  "thiserror",

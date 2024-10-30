@@ -1,12 +1,15 @@
 [package]
-name = "bewusstsein-linear-algebra"
+name = "linear-algebra"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "linear-algebra-main"
+path = "src/main.rs"
+
 [dependencies]
 thiserror = "1.0.63"
+bewusstsein = { version = "0.1.0", path = "../../bewusstsein/rust", features = [ "memory" ] }

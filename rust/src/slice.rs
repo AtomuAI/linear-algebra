@@ -2,20 +2,27 @@
 
 use std::ops::{ Index, IndexMut };
 
+use bewusstsein::memory::Memory;
+
 use crate::tensor::{ Tensor, Error };
 
-pub struct Slice<'a, T, const N: usize> {
-    tensor: &'a mut Tensor<T, N>,
+pub struct Slice<'a, T, const N: usize, M>
+where
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
+{
+    tensor: &'a mut Tensor<T, N, M>,
     start: [usize; N],
     end: [usize; N],
     strides: [usize; N],
 }
 
-impl<'a, T, const N: usize> Slice<'a, T, N>
+impl<'a, T, const N: usize, M> Slice<'a, T, N, M>
 where
-    T: Default + Clone + PartialEq,
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
 {
-    pub fn new(tensor: &'a mut Tensor<T, N>, start: [usize; N], end: [usize; N], strides: [usize; N]) -> Self {
+    pub fn new(tensor: &'a mut Tensor<T, N, M>, start: [usize; N], end: [usize; N], strides: [usize; N]) -> Self {
         Slice {
             tensor,
             start,
@@ -44,7 +51,7 @@ where
         shape
     }
 
-    pub fn tensor(&self) -> Result<Tensor<T, N>, Error> {
+    pub fn tensor(&self) -> Result<Tensor<T, N, M>, Error> {
         let shape = self.shape();
         let mut tensor = Tensor::new( shape );
         for i in 0..self.size() {
@@ -89,9 +96,10 @@ where
 }
 
 // Dimensional Indexing
-impl<'a, T, const N: usize> Index<[usize; N]> for Slice<'a, T, N>
+impl<'a, T, const N: usize, M> Index<[usize; N]> for Slice<'a, T, N, M>
 where
-    T: Default + Clone + PartialEq,
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
 {
     type Output = T;
 
@@ -101,9 +109,10 @@ where
     }
 }
 
-impl<'a, T, const N: usize> IndexMut<[usize; N]> for Slice<'a, T, N>
+impl<'a, T, const N: usize, M> IndexMut<[usize; N]> for Slice<'a, T, N, M>
 where
-    T: Default + Clone + PartialEq,
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
 {
     fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
         let flat_index = self.calculate_flat_index(&index);
@@ -112,9 +121,10 @@ where
 }
 
 // Flat Indexing
-impl<'a, T, const N: usize> Index<usize> for Slice<'a, T, N>
+impl<'a, T, const N: usize, M> Index<usize> for Slice<'a, T, N, M>
 where
-    T: Default + Clone + PartialEq,
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
 {
     type Output = T;
 
@@ -123,9 +133,10 @@ where
     }
 }
 
-impl<'a, T, const N: usize> IndexMut<usize> for Slice<'a, T, N>
+impl<'a, T, const N: usize, M> IndexMut<usize> for Slice<'a, T, N, M>
 where
-    T: Default + Clone + PartialEq,
+    T: Default + Clone + Copy + PartialEq,
+    M: Memory<T>
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.tensor[index]
