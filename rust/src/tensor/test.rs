@@ -1,10 +1,13 @@
 // Copyright 2024 Bewusstsein Labs
 
-use crate::tensor::{ Tensor, Error };
+use bewusstsein::memory::memory::heap::Heap;
+use bewusstsein::memory::storage::owned::Owned;
+
+use crate::tensor::Tensor;
 
 #[test]
-fn test() -> Result<(), Error>{
-    let mut tensor = Tensor::<f32, 3>::new( [ 2, 3, 4 ] );
+fn test() {
+    let mut tensor = Tensor::<f32, 3, Heap, Owned>::new( [ 2, 3, 4 ] );
     assert_eq!( tensor.dim(), 3_usize );
     assert_eq!( tensor.size(), 24_usize );
     assert_eq!( tensor.shape(), [ 2_usize, 3_usize, 4_usize ] );

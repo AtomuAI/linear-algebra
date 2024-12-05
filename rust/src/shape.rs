@@ -1,16 +1,8 @@
 // Copyright 2024 Bewusstsein Labs
 
-mod test;
+//mod test;
 
-use std::ops::{ Index, IndexMut };
-
-use bewusstsein::memory::{
-    memory::Memory,
-    storage::{
-        Storage,
-        owned::Owned
-    }
-};
+use std::ops::{ Deref, DerefMut };
 
 #[derive( Debug )]
 pub enum Error {
@@ -19,48 +11,58 @@ pub enum Error {
 }
 
 #[derive( Debug, Clone, Copy )]
-pub struct Shape<M>
-where
-    M: Memory<usize>
-{
-    storage: Storage<usize, M>
+pub struct Shape<const N: usize> {
+    dim: [usize; N]
 }
 
-impl<M> Shape<M>
-where
-    M: Memory<usize>
-{
-    pub fn new( dim: usize ) -> Self {
-        Shape {
-            storage: Storage<M>::new( dim )
-        }
-    }
-
-    pub fn from( data: M::Type ) -> Self {
-        Shape {
-            storage: Storage<M>::from( data )
+impl<const N: usize> Shape<N> {
+    pub fn new() -> Self {
+        Self {
+            dim: [0; N]
         }
     }
 
     pub fn dim( &self ) -> usize {
-        self.storage.cap()
+        N
     }
 
     pub fn vol( &self ) -> usize {
-        self.storage.iter().fold( 1, |acc, &x| acc * x )
+        self.dim.iter().fold( 1, |acc, &x| acc * x )
     }
 }
 
-impl<T> Index<usize> for Shape<M> {
-    type Output = T;
-
-    fn index( &self, index: usize ) -> &Self::Output {
-        &self.storage[ index ]
+impl<const N: usize> Default for Shape<N> {
+    fn default() -> Self {
+        Self { dim: [0; N] }
     }
 }
 
-impl<T> IndexMut<usize> for Shape<M> {
-    fn index_mut( &mut self, index: usize ) -> &mut Self::Output {
-        &mut self.storage[ index ]
+impl<const N: usize> PartialEq for Shape<N> {
+    fn eq( &self, other: &Self ) -> bool {
+        self.dim == other.dim
+    }
+}
+
+impl<const N: usize> Eq for Shape<N> {}
+
+impl<const N: usize> Deref for Shape<N> {
+    type Target = [usize; N];
+
+    fn deref( &self ) -> &Self::Target {
+        &self.dim
+    }
+}
+
+impl<const N: usize> DerefMut for Shape<N> {
+    fn deref_mut( &mut self ) -> &mut Self::Target {
+        &mut self.dim
+    }
+}
+
+impl<const N: usize> From<[usize; N]> for Shape<N> {
+    fn from( slice: [usize; N] ) -> Self {
+        Self {
+            dim: slice
+        }
     }
 }

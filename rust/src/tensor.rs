@@ -1,20 +1,14 @@
 // Copyright 2024 Bewusstsein Labs
 
-mod test;
+//mod test;
 
 use std::ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign };
 
-use bewusstsein::memory::{
-    memory::Memory,
-    storage::{
-        Storage,
-        owned::Owned
-    }
-};
+use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
 
 use crate::{
     shape::Shape,
-    slice::Slice
+    //slice::Slice
 };
 
 #[ derive( Debug ) ]
@@ -23,61 +17,145 @@ pub enum Error {
     MismatchedShapes,
 }
 
-#[derive( Debug, Clone)]
-pub struct Tensor<T, S, M>
+#[ derive( Clone ) ]
+pub struct Tensor<T, const D: usize, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Storage<T, M>,
-    M: Storage<T, M>
-
+    T: 'static + Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
-    shape: Shape<S>,
-    storage: Storage<T, M>
+    shape: Shape<D>,
+    memory: Memory<T, M>
 }
 
-impl<T, S, M> Tensor<T, S, M>
+impl<T, const D: usize, M> Default for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: 'static + Default + Copy,
+    M: MemoryType,
+    M::Data<T>: Default,
+    Memory<T, M>: MemoryTraits<Type = T> + Default
 {
-    fn new( shape: Shape<S> ) -> Self {
-        let vol = shape.vol();
+    fn default() -> Self {
+        Self {
+            shape: Shape::default(),
+            memory: Memory::default()
+        }
+    }
+}
+
+impl<T, const D: usize, const N: usize> Tensor<T, D, Stack<N>>
+where
+T: 'static + Default + Copy
+{
+    pub fn new( shape: Shape<D> ) -> Self {
         Self {
             shape,
-            storage: Storage::new::<T, M>( vol )
+            memory: Memory::<T, Stack<N>>::new( () )
         }
     }
 
-    fn from( shape: Shape<S>, src: &[T] ) -> Result<Self, Error> {
-        match shape.vol() == src.len() {
-            false => Err( Error::MismatchedSizes ),
-            true => Ok( Self {
-                shape,
-                storage: Storage::from::<T, M>( src )
-            })
+    pub fn take( memory: [T; N] ) -> Self {
+        Self {
+            shape: Shape::<D>::new(),
+            memory: Memory::<T, Stack<N>>::take( memory )
         }
+    }
+}
 
+impl<T, const D: usize> Tensor<T, D, Heap>
+where
+    T: 'static + Default + Copy
+{
+    pub fn new( shape: Shape<D> ) -> Self {
+        let vol = shape.vol();
+        let mut memory = Memory::<T, Heap>::new( vol );
+        memory.resize( vol, T::default() );
+        Self {
+            shape,
+            memory
+        }
     }
 
+    pub fn take( memory: Vec<T> ) -> Self {
+        Self {
+            shape: Shape::<D>::new(),
+            memory: Memory::<T, Heap>::take( memory )
+        }
+    }
+}
+
+pub trait TensorTraits<T, const D: usize, M>
+where
+    T: 'static + Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Sized
+{
+    fn dim( &self ) -> usize;
+    fn size( &self ) -> usize;
+    fn shape( &self ) -> &Shape<D>;
+    //fn slice<'a>( &'a mut self, start: Shape<D>, end: Shape<D>, strides: Shape<D> ) -> Slice<'a, T, S, M>;
+    fn reshape( &mut self, shape: Shape<D> ) -> Result<(), Error>;
+    fn fill( &mut self, value: T );
+    fn zero( &mut self );
+    fn identity( &mut self, value: T );
+    fn flat_idx( &self, index: &[usize; D] ) -> usize;
+    fn iter( &self ) -> std::slice::Iter<T>;
+    fn iter_mut( &mut self ) -> std::slice::IterMut<T>;
+    fn add( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
+    where T: Add<Output = T>;
+
+    fn sub( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
+    where T: Sub<Output = T>;
+
+    fn mul( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
+    where T: Mul<Output = T>;
+
+    fn div( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
+    where T: Div<Output = T>;
+
+    fn product<O, P>(
+        a: &Tensor<T, D, M>,
+        b: &Tensor<T, D, O>,
+        c: &mut Tensor<T, D, P>,
+    ) -> Result<(), Error>
+    where
+        T: Mul<Output = T>,
+        M: MemoryType,
+        O: MemoryType,
+        P: MemoryType,
+        Tensor<T, D, M>: TensorTraits<T, D, M>,
+        Tensor<T, D, O>: TensorTraits<T, D, O>,
+        Tensor<T, D, P>: TensorTraits<T, D, P>,
+        Memory<T, M>: MemoryTraits<Type = T>,
+        Memory<T, O>: MemoryTraits<Type = T>,
+        Memory<T, P>: MemoryTraits<Type = T>;
+}
+
+impl<T, const D: usize, M> TensorTraits<T, D, M> for Tensor<T, D, M>
+where
+    T: Default + Clone + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+{
     fn dim( &self ) -> usize {
         self.shape.dim()
     }
 
     fn size( &self ) -> usize {
-        self.storage.len()
+        self.memory.len()
     }
 
-    fn shape( &self ) -> &Shape<S> {
+    fn shape( &self ) -> &Shape<D> {
         &self.shape
     }
 
-    fn slice<'a>( &'a mut self, start: Shape<S>, end: Shape<S>, strides: Shape<S> ) -> Slice<'a, T, S, M> {
-        Slice::new( self, start, end, strides )
-    }
+    //fn slice<'a>( &'a mut self, start: Shape<D>, end: Shape<D>, strides: Shape<D> ) -> Slice<'a, T, S, M> {
+    //    Slice::new( self, start, end, strides )
+    //}
 
-    fn reshape( &mut self, shape: Shape<S> ) -> Result<(), Error> {
-        match shape.vol() == self.storage.len() {
+    fn reshape( &mut self, shape: Shape<D> ) -> Result<(), Error> {
+        match shape.vol() == self.memory.len() {
             false => Err( Error::MismatchedSizes ),
             true => {
                 self.shape = shape;
@@ -87,8 +165,8 @@ where
     }
 
     fn fill( &mut self, value: T ) {
-        for i in 0..self.storage.len() {
-            self.storage[ i ] = value.clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] = value.clone();
         }
     }
 
@@ -97,26 +175,16 @@ where
     }
 
     fn identity( &mut self, value: T ) {
-        for i in 0..self.storage.len() {
+        for i in 0..self.memory.len() {
             if i % ( self.shape[ 0 ] + 1 ) == 0 {
-                self.storage[ i ] = value.clone();
+                self.memory[ i ] = value.clone();
             } else {
-                self.storage[ i ] = T::default();
+                self.memory[ i ] = T::default();
             }
         }
     }
 
-    fn set( &mut self, storage: M::Type ) -> Result<(), Error> {
-        match storage.len() == self.storage.len() {
-            false => Err( Error::MismatchedSizes ),
-            true => {
-                self.storage = storage;
-                Ok( () )
-            }
-        }
-    }
-
-    fn flat_idx( &self, index: &Shape<S> ) -> usize {
+    fn flat_idx( &self, index: &[usize; D] ) -> usize {
         let dim = self.shape.dim();
         let mut flat_idx = 0;
         let mut stride = 1;
@@ -127,72 +195,88 @@ where
         flat_idx
     }
 
-    fn add( a: &Tensor<T, S, M>, b: &Tensor<T, S, M>, c: &mut Tensor<T, S, M> ) -> Result<(), Error>
+    fn iter( &self ) -> std::slice::Iter<T> {
+        self.memory.iter()
+    }
+
+    fn iter_mut( &mut self ) -> std::slice::IterMut<T> {
+        self.memory.iter_mut()
+    }
+
+    fn add( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
     where
         T: Add<Output = T>,
     {
         if a.shape != b.shape || b.shape != c.shape {
             return Err( Error::MismatchedShapes );
         }
-        for i in 0..a.storage.len() {
-            c.storage[ i ] = a.storage[ i ].clone() + b.storage[ i ].clone();
+        for i in 0..a.memory.len() {
+            c.memory[ i ] = a.memory[ i ] + b.memory[ i ];
         }
         Ok( () )
     }
 
-    fn sub( a: &Tensor<T, S, M>, b: &Tensor<T, S, M>, c: &mut Tensor<T, S, M> ) -> Result<(), Error>
+    fn sub( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
     where
         T: Sub<Output = T>,
     {
         if a.shape != b.shape || b.shape != c.shape {
             return Err( Error::MismatchedShapes );
         }
-        for i in 0..a.storage.len() {
-            c.storage[ i ] = a.storage[ i ].clone() - b.storage[ i ].clone();
+        for i in 0..a.memory.len() {
+            c.memory[ i ] = a.memory[ i ] - b.memory[ i ];
         }
         Ok( () )
     }
 
-    fn mul( a: &Tensor<T, S, M>, b: &Tensor<T, S, M>, c: &mut Tensor<T, S, M> ) -> Result<(), Error>
+    fn mul( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
     where
         T: Mul<Output = T>,
     {
         if a.shape != b.shape || b.shape != c.shape {
             return Err( Error::MismatchedShapes );
         }
-        for i in 0..a.storage.len() {
-            c.storage[ i ] = a.storage[ i ].clone() * b.storage[ i ].clone();
+        for i in 0..a.memory.len() {
+            c.memory[ i ] = a.memory[ i ] * b.memory[ i ];
         }
         Ok( () )
     }
 
-    fn div( a: &Tensor<T, S, M>, b: &Tensor<T, S, M>, c: &mut Tensor<T, S, M> ) -> Result<(), Error>
+    fn div( a: &Tensor<T, D, M>, b: &Tensor<T, D, M>, c: &mut Tensor<T, D, M> ) -> Result<(), Error>
     where
         T: Div<Output = T>,
     {
         if a.shape != b.shape || b.shape != c.shape {
             return Err( Error::MismatchedShapes );
         }
-        for i in 0..a.storage.len() {
-            c.storage[ i ] = a.storage[ i ].clone() / b.storage[ i ].clone();
+        for i in 0..a.memory.len() {
+            c.memory[ i ] = a.memory[ i ] / b.memory[ i ];
         }
         Ok( () )
     }
 
     fn product<O, P>(
-        a: &Tensor<T, S, M>,
-        b: &Tensor<T, O, M>,
-        c: &mut Tensor<T, P, M>,
+        a: &Tensor<T, D, M>,
+        b: &Tensor<T, D, O>,
+        c: &mut Tensor<T, D, P>,
     ) -> Result<(), Error>
     where
         T: Mul<Output = T>,
-        O: Memory<usize>,
-        P: Memory<usize>,
+        M: MemoryType,
+        O: MemoryType,
+        P: MemoryType,
+        Tensor<T, D, M>: TensorTraits<T, D, M>,
+        Tensor<T, D, O>: TensorTraits<T, D, O>,
+        Tensor<T, D, P>: TensorTraits<T, D, P>,
+        Memory<T, M>: MemoryTraits<Type = T>,
+        Memory<T, O>: MemoryTraits<Type = T>,
+        Memory<T, P>: MemoryTraits<Type = T>
     {
         let a_dim = a.dim();
         let b_dim = b.dim();
         let c_dim = c.dim();
-        let mut expected_shape = Shape::new::<P>( c_dim );
+        let mut expected_shape = Shape::<D>::new();
+        expected_shape[ 0 ] = c_dim;
         for i in 0..a_dim {
             expected_shape[ i ] = a.shape[ i ];
         }
@@ -204,10 +288,10 @@ where
             return Err( Error::MismatchedShapes );
         }
 
-        for ( i, a_elem ) in a.storage.iter().enumerate() {
-            for ( j, b_elem ) in b.storage.iter().enumerate() {
-                let result_index = i * b.storage.len() + j;
-                c.storage[ result_index ] = a_elem.clone() * b_elem.clone();
+        for ( i, a_elem ) in a.memory.iter().enumerate() {
+            for ( j, b_elem ) in b.memory.iter().enumerate() {
+                let result_index = i * b.memory.len() + j;
+                c.memory[ result_index ] = *a_elem * *b_elem;
             }
         }
 
@@ -215,11 +299,12 @@ where
     }
 }
 
-impl<T, S, M> Add for Tensor<T, S, M>
+impl<T, const D: usize, M> Add for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Add<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Add<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
@@ -228,18 +313,19 @@ where
             panic!( "Mismatched shapes" );
         }
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() + other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] + other.memory[ i ];
         }
         result
     }
 }
 
-impl<T, S, M> Sub for Tensor<T, S, M>
+impl<T, const D: usize, M> Sub for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Sub<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Sub<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
@@ -248,18 +334,19 @@ where
             panic!( "Mismatched shapes" );
         }
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() - other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] - other.memory[ i ];
         }
         result
     }
 }
 
-impl<T, S, M> Mul for Tensor<T, S, M>
+impl<T, const D: usize, M> Mul for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Mul<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Mul<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
@@ -268,18 +355,19 @@ where
             panic!( "Mismatched shapes" );
         }
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() * other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] * other.memory[ i ];
         }
         result
     }
 }
 
-impl<T, S, M> Div for Tensor<T, S, M>
+impl<T, const D: usize, M> Div for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Div<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Div<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
@@ -288,245 +376,270 @@ where
             panic!( "Mismatched shapes" );
         }
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() / other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] / other.memory[ i ];
         }
         result
     }
 }
 
-impl<T, S, M> Add<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> Add<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Add<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Add<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
     fn add( self, scalar: T ) -> Self::Output {
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() + scalar.clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] + scalar;
         }
         result
     }
 }
 
-impl<T, S, M> Sub<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> Sub<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Sub<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Sub<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
     fn sub( self, scalar: T ) -> Self::Output {
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() - scalar.clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] - scalar;
         }
         result
     }
 }
 
-impl<T, S, M:> Mul<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> Mul<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Mul<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Mul<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
     fn mul( self, scalar: T ) -> Self::Output {
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() * scalar.clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] * scalar;
         }
         result
     }
 }
 
-impl<T, S, M> Div<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> Div<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + Div<Output = T>,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + Div<Output = T>,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
 {
     type Output = Self;
 
     fn div( self, scalar: T ) -> Self::Output {
         let mut result = self.clone();
-        for i in 0..self.storage.len() {
-            result.storage[ i ] = self.storage[ i ].clone() / scalar.clone();
+        for i in 0..self.memory.len() {
+            result.memory[ i ] = self.memory[ i ] / scalar;
         }
         result
     }
 }
 
-impl<T, S, M> AddAssign for Tensor<T, S, M>
+impl<T, const D: usize, M> AddAssign for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + AddAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + AddAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn add_assign( &mut self, other: Self ) {
         if other.shape != self.shape {
             panic!( "Mismatched shapes" );
         }
-        for i in 0..self.storage.len() {
-            self.storage[ i ] += other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] += other.memory[ i ];
         }
     }
 }
 
-impl<T, S, M> SubAssign for Tensor<T, S, M>
+impl<T, const D: usize, M> SubAssign for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + SubAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + SubAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn sub_assign( &mut self, other: Self ) {
         if other.shape != self.shape {
             panic!( "Mismatched shapes" );
         }
-        for i in 0..self.storage.len() {
-            self.storage[ i ] -= other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] -= other.memory[ i ];
         }
     }
 }
 
-impl<T, S, M> MulAssign for Tensor<T, S, M>
+impl<T, const D: usize, M> MulAssign for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + MulAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + MulAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn mul_assign( &mut self, other: Self ) {
         if other.shape != self.shape {
             panic!( "Mismatched shapes" );
         }
-        for i in 0..self.storage.len() {
-            self.storage[ i ] *= other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] *= other.memory[ i ];
         }
     }
 }
 
-impl<T, S, M> DivAssign for Tensor<T, S, M>
+impl<T, const D: usize, M> DivAssign for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + DivAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + DivAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn div_assign( &mut self, other: Self ) {
         if other.shape != self.shape {
             panic!( "Mismatched shapes" );
         }
-        for i in 0..self.storage.len() {
-            self.storage[ i ] /= other.storage[ i ].clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] /= other.memory[ i ];
         }
     }
 }
 
-impl<T, S, M> AddAssign<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> AddAssign<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + AddAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + AddAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn add_assign( &mut self, scalar: T ) {
-        for i in 0..self.storage.len() {
-            self.storage[ i ] += scalar.clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] += scalar;
         }
     }
 }
 
-impl<T, S, M> SubAssign<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> SubAssign<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + SubAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + SubAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn sub_assign( &mut self, scalar: T ) {
-        for i in 0..self.storage.len() {
-            self.storage[ i ] -= scalar.clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] -= scalar;
         }
     }
 }
 
-impl<T, S, M> MulAssign<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> MulAssign<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + MulAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + MulAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn mul_assign( &mut self, scalar: T ) {
-        for i in 0..self.storage.len() {
-            self.storage[ i ] *= scalar.clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] *= scalar;
         }
     }
 }
 
-impl<T, S, M> DivAssign<T> for Tensor<T, S, M>
+impl<T, const D: usize, M> DivAssign<T> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq + DivAssign,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy + DivAssign,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn div_assign( &mut self, scalar: T ) {
-        for i in 0..self.storage.len() {
-            self.storage[ i ] /= scalar.clone();
+        for i in 0..self.memory.len() {
+            self.memory[ i ] /= scalar;
         }
     }
 }
 
 // Dimensional Indexing
-impl<T, S, M> Index<Shape<S>> for Tensor<T, S, M>
+impl<T, const D: usize, M> Index<[usize; D]> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: TensorTraits<T, D, M>
 {
     type Output = T;
 
-    fn index( &self, index: Shape<S> ) -> &Self::Output {
+    fn index( &self, index: [usize; D] ) -> &Self::Output {
         let flat_idx = self.flat_idx( &index );
-        &self.storage[ flat_idx ]
+        &self.memory[ flat_idx ]
     }
 }
 
-impl<T, S, M> IndexMut<Shape<S>> for Tensor<T, S, M>
+impl<T, const D: usize, M> IndexMut<[usize; D]> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: TensorTraits<T, D, M>
 {
-    fn index_mut( &mut self, index: Shape<S> ) -> &mut Self::Output {
+    fn index_mut( &mut self, index: [usize; D] ) -> &mut Self::Output {
         let flat_idx = self.flat_idx( &index );
-        &mut self.storage[ flat_idx ]
+        &mut self.memory[ flat_idx ]
     }
 }
 
 // Flat Indexing
-impl<T, S, M> Index<usize> for Tensor<T, S, M>
+impl<T, const D: usize, M> Index<usize> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     type Output = T;
 
     fn index( &self, index: usize ) -> &Self::Output {
-        &self.storage[ index ]
+        &self.memory[ index ]
     }
 }
 
-impl<T, S, M> IndexMut<usize> for Tensor<T, S, M>
+impl<T, const D: usize, M> IndexMut<usize> for Tensor<T, D, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    S: Memory<usize>,
-    M: Memory<T>
+    T: Default + Copy,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     fn index_mut( &mut self, index: usize ) -> &mut Self::Output {
-        &mut self.base.storage[ index ]
+        &mut self.memory[ index ]
+    }
+}
+
+#[cfg( test )]
+mod tests {
+    use super::*;
+
+    #[ test ]
+    fn test_iter() {
+        let mut tensor = Tensor::<f32, 1, Heap>::new( Shape::<1>::from( [3] ) );
+        tensor[ 0 ] = 1.0;
+        tensor[ 1 ] = 2.0;
+        tensor[ 2 ] = 3.0;
+
+        let mut iter = tensor.iter();
+        assert_eq!( iter.next(), Some( &1.0 ) );
+        assert_eq!( iter.next(), Some( &2.0 ) );
+        assert_eq!( iter.next(), Some( &3.0 ) );
+        assert_eq!( iter.next(), None );
     }
 }

@@ -1,11 +1,10 @@
 // Copyright 2024 Bewusstsein Labs
 
-use crate::tensor::{ Error };
-use crate::vector::{ Vector };
+use crate::vector::Vector;
 
 #[test]
-fn test() -> Result<(), Error>{
-    let mut vector = Vector::<f32>::new( [ 2 ] );
+fn test() {
+    let mut vector = Vector::<f32, 2>::new( [ 2 ] );
     assert_eq!( vector.dim(), 1_usize );
     assert_eq!( vector.size(), 2_usize );
     assert_eq!( vector.shape(), [ 2_usize ] );

@@ -1,11 +1,10 @@
 // Copyright 2024 Bewusstsein Labs
 
-use crate::tensor::{ Error };
 use crate::matrix::Matrix3x3;
 
 #[test]
-fn test() -> Result<(), Error>{
-    let mut matrix = Matrix3x3::<f32>::new( [ 2, 3 ] );
+fn test() {
+    let mut matrix = Matrix3x3::<f32>::new();
     assert_eq!( matrix.dim(), 2_usize );
     assert_eq!( matrix.size(), 6_usize );
     assert_eq!( matrix.shape(), [ 2_usize, 3_usize ] );
