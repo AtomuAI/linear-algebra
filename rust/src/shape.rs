@@ -11,15 +11,11 @@ pub enum Error {
 }
 
 #[derive( Debug, Clone, Copy )]
-pub struct Shape<const N: usize> {
-    dim: [usize; N]
-}
+pub struct Shape<const N: usize> ( [usize; N] );
 
 impl<const N: usize> Shape<N> {
     pub fn new() -> Self {
-        Self {
-            dim: [0; N]
-        }
+        Self ( [0; N] )
     }
 
     pub fn dim( &self ) -> usize {
@@ -27,19 +23,19 @@ impl<const N: usize> Shape<N> {
     }
 
     pub fn vol( &self ) -> usize {
-        self.dim.iter().fold( 1, |acc, &x| acc * x )
+        self.0.iter().product()
     }
 }
 
 impl<const N: usize> Default for Shape<N> {
     fn default() -> Self {
-        Self { dim: [0; N] }
+        Self ( [0; N] )
     }
 }
 
 impl<const N: usize> PartialEq for Shape<N> {
     fn eq( &self, other: &Self ) -> bool {
-        self.dim == other.dim
+        self.0 == other.0
     }
 }
 
@@ -49,20 +45,18 @@ impl<const N: usize> Deref for Shape<N> {
     type Target = [usize; N];
 
     fn deref( &self ) -> &Self::Target {
-        &self.dim
+        &self.0
     }
 }
 
 impl<const N: usize> DerefMut for Shape<N> {
     fn deref_mut( &mut self ) -> &mut Self::Target {
-        &mut self.dim
+        &mut self.0
     }
 }
 
 impl<const N: usize> From<[usize; N]> for Shape<N> {
     fn from( slice: [usize; N] ) -> Self {
-        Self {
-            dim: slice
-        }
+        Self ( slice )
     }
 }

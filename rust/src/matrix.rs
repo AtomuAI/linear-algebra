@@ -2,7 +2,10 @@
 
 //mod test;
 
-use std::ops::{ Deref, DerefMut };
+use std::{
+    fmt::Debug,
+    ops::{ Deref, DerefMut, Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
+};
 
 use memory::{
     stack::Stack,
@@ -16,42 +19,236 @@ use crate::{
     tensor::{ Tensor, TensorTraits }
 };
 
-#[derive( Clone, Default )]
-pub struct Matrix<T, const N: usize, const M: usize>( Tensor<T, 2, Stack<{ N * M }>> ) where T: 'static + Copy + Default, [(); N * M]:;
+#[derive( Clone, Default, Debug )]
+pub struct Matrix<T, const COL: usize, const ROW: usize>( Tensor<T, 2, Stack<{ COL * ROW }>> ) where T: 'static + Copy + Default + Debug, [(); COL * ROW]:;
 
-impl<T, const N: usize, const M: usize> Matrix<T, N, M>
+impl<T, const COL: usize, const ROW: usize> Matrix<T, COL, ROW>
 where
-    T: 'static + Copy + Default,
-    [(); N * M]:
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
 {
     pub fn new() -> Self {
-        Self( Tensor::<T, 2, Stack<{ N * M }>>::new( Shape::<2>::from( [N, M] ) ) )
+        Self( Tensor::<T, 2, Stack<{ COL * ROW }>>::new( Shape::<2>::from( [COL, ROW] ) ) )
     }
 
-    pub fn take( src: [T; N * M] ) -> Self {
-        Self( Tensor::<T, 2, Stack<{ N * M }>>::take( src ) )
+    pub fn take( src: [T; COL * ROW] ) -> Self {
+        Self( Tensor::<T, 2, Stack<{ COL * ROW }>>::take( Shape::<2>::from( [COL, ROW] ), src ) )
+    }
+
+    pub fn cols() -> usize {
+        COL
+    }
+
+    pub fn rows() -> usize {
+        ROW
     }
 }
 
-impl<T, const N: usize, const M: usize> Deref for Matrix<T, N, M>
+impl<T, const COL: usize, const ROW: usize> PartialEq for Matrix<T, COL, ROW>
 where
-    T: 'static + Copy + Default,
-    [(); N * M]:
+    T: 'static + Copy + Default + Debug + PartialEq,
+    [(); COL * ROW]:
 {
-    type Target = Tensor<T, 2, Stack<{ N * M }>>;
+    fn eq( &self, other: &Self ) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Deref for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    type Target = Tensor<T, 2, Stack<{ COL * ROW }>>;
 
     fn deref( &self ) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T, const N: usize, const M: usize> DerefMut for Matrix<T, N, M>
+impl<T, const COL: usize, const ROW: usize> DerefMut for Matrix<T, COL, ROW>
 where
-    T: 'static + Copy + Default,
-    [(); N * M]:
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
 {
     fn deref_mut( &mut self ) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Add for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Add<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn add( self, other: Self ) -> Self::Output {
+        Self( self.0 + other.0 )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Sub for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Sub<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn sub( self, other: Self ) -> Self::Output {
+        Self( self.0 - other.0 )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Mul for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn mul( self, other: Self ) -> Self::Output {
+        Self( self.0 * other.0 )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Div for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Div<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn div( self, other: Self ) -> Self::Output {
+        Self( self.0 / other.0 )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Add<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Add<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn add( self, scalar: T ) -> Self::Output {
+        Self( self.0 + scalar )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Sub<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Sub<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn sub( self, scalar: T ) -> Self::Output {
+        Self( self.0 - scalar )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Mul<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn mul( self, scalar: T ) -> Self::Output {
+        Self( self.0 * scalar )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Div<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Div<Output = T>,
+    [(); COL * ROW]:
+{
+    type Output = Self;
+
+    fn div( self, scalar: T ) -> Self::Output {
+        Self( self.0 / scalar )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> AddAssign for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + AddAssign,
+    [(); COL * ROW]:
+{
+    fn add_assign( &mut self, other: Self ) {
+        self.0 += other.0;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> SubAssign for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + SubAssign,
+    [(); COL * ROW]:
+{
+    fn sub_assign( &mut self, other: Self ) {
+        self.0 -= other.0;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> MulAssign for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + MulAssign,
+    [(); COL * ROW]:
+{
+    fn mul_assign( &mut self, other: Self ) {
+        self.0 *= other.0;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> DivAssign for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + DivAssign,
+    [(); COL * ROW]:
+{
+    fn div_assign( &mut self, other: Self ) {
+        self.0 /= other.0;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> AddAssign<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + AddAssign,
+    [(); COL * ROW]:
+{
+    fn add_assign( &mut self, scalar: T ) {
+        self.0 += scalar;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> SubAssign<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + SubAssign,
+    [(); COL * ROW]:
+{
+    fn sub_assign( &mut self, scalar: T ) {
+        self.0 -= scalar;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> MulAssign<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + MulAssign,
+    [(); COL * ROW]:
+{
+    fn mul_assign( &mut self, scalar: T ) {
+        self.0 *= scalar;
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> DivAssign<T> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + DivAssign,
+    [(); COL * ROW]:
+{
+    fn div_assign( &mut self, scalar: T ) {
+        self.0 /= scalar;
     }
 }
 
@@ -150,5 +347,42 @@ mod tests {
         for ( i, value ) in matrix.deref().iter().enumerate() {
             assert_eq!( value, &src[ i ] );
         }
+    }
+
+    #[test]
+    fn mat_mul_test() {
+        use crate::tensor::contract;
+
+        let a = Matrix2x2::<f32>::take([
+            1.0, 2.0,
+            3.0, 4.0
+        ]);
+
+        let b = Matrix2x2::<f32>::take([
+            1.0, 2.0,
+            3.0, 4.0
+        ]);
+
+        let mut c = Matrix2x2::<f32>::take([
+            0.0, 0.0,
+            0.0, 0.0
+        ]);
+
+        println!( "Before:");
+        println!( "a: {:?}", a );
+        println!( "b: {:?}", b );
+        println!( "c: {:?}", c );
+
+        contract( &a, &b, &mut c, &[1], &[0] );
+
+        println!( "After:");
+        println!( "a: {:?}", a );
+        println!( "b: {:?}", b );
+        println!( "c: {:?}", c );
+
+        assert_eq!( c[[0, 0]], 7.0 );
+        assert_eq!( c[[0, 1]], 10.0 );
+        assert_eq!( c[[1, 0]], 15.0 );
+        assert_eq!( c[[1, 1]], 22.0 );
     }
 }
