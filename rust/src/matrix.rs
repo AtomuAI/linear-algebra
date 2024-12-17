@@ -6,51 +6,92 @@ use std::{
     fmt::Debug,
     ops::{ Deref, DerefMut, Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
 };
+use num::traits::Num;
 
-use memory::{
-    stack::Stack,
-    MemoryTraits,
-    MemoryType,
-    Memory
-};
+use memory::stack::Stack;
 
 use crate::{
+    vector::Vector,
     shape::Shape,
-    tensor::{ Tensor, TensorTraits }
+    tensor::{ Tensor, TensorAccess }
 };
 
-#[derive( Clone, Default, Debug )]
-pub struct Matrix<T, const COL: usize, const ROW: usize>( Tensor<T, 2, Stack<{ COL * ROW }>> ) where T: 'static + Copy + Default + Debug, [(); COL * ROW]:;
+#[derive( Clone, Debug )]
+pub struct Matrix<T, const COL: usize, const ROW: usize>( [ T; COL * ROW ] ) where T: 'static + Copy + Default + Debug, [(); COL * ROW]:;
 
 impl<T, const COL: usize, const ROW: usize> Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
     [(); COL * ROW]:
 {
-    pub fn new() -> Self {
-        Self( Tensor::<T, 2, Stack<{ COL * ROW }>>::new( Shape::<2>::from( [COL, ROW] ) ) )
+    pub const fn new_const( src: [T; COL * ROW] ) -> Self {
+        Self( src )
     }
 
-    pub fn take( src: [T; COL * ROW] ) -> Self {
-        Self( Tensor::<T, 2, Stack<{ COL * ROW }>>::take( Shape::<2>::from( [COL, ROW] ), src ) )
+    pub fn new() -> Self
+    where
+        T: Num
+    {
+        Self( [ T::zero(); COL * ROW ] )
     }
 
-    pub fn cols() -> usize {
+    #[inline(always)]
+    pub const fn dim( &self ) -> usize {
+        2
+    }
+
+    #[inline(always)]
+    pub const fn cols() -> usize {
         COL
     }
 
-    pub fn rows() -> usize {
+    #[inline(always)]
+    pub const fn rows() -> usize {
         ROW
     }
-}
 
-impl<T, const COL: usize, const ROW: usize> PartialEq for Matrix<T, COL, ROW>
-where
-    T: 'static + Copy + Default + Debug + PartialEq,
-    [(); COL * ROW]:
-{
-    fn eq( &self, other: &Self ) -> bool {
-        self.0 == other.0
+    #[inline(always)]
+    pub const fn shape( &self ) -> Shape<2> {
+        Shape::new_const( [COL, ROW] )
+    }
+
+    #[inline(always)]
+    pub fn idx( col: usize, row: usize ) -> usize {
+        row * ROW + col
+    }
+
+    #[inline(always)]
+    pub const fn idx_const( col: usize, row: usize ) -> usize {
+        row * ROW + col
+    }
+
+    pub fn reshape<const NEW_COL: usize, const NEW_ROW: usize>(&self) -> &Matrix<T, NEW_COL, NEW_ROW>
+    where
+        T: Default + Copy + Debug,
+        [(); NEW_COL * NEW_ROW]:,
+    {
+        assert_eq!( COL * ROW, NEW_COL * NEW_ROW, "Total number of elements must remain the same for reshape." );
+        unsafe { // SAFETY: This is safe because we have asserted that the total number of elements is the same
+            &*( self as *const Matrix<T, COL, ROW> as *const Matrix<T, NEW_COL, NEW_ROW> )
+        }
+    }
+
+    pub fn resize<const NEW_COL: usize, const NEW_ROW: usize>( &self ) -> Matrix<T, NEW_COL, NEW_ROW>
+    where
+        T: Default + Copy + Debug,
+        [(); NEW_COL * NEW_ROW]:
+    {
+        let mut result = Matrix::default();
+        let min_cols = COL.min( NEW_COL );
+        let min_rows = ROW.min( NEW_ROW );
+
+        self.0.chunks( COL ).take( min_rows ).enumerate().for_each( |( row, chunk )| {
+            chunk.iter().take( min_cols ).enumerate().for_each( |( col, &value )| {
+                result.0[ Self::idx( row, col ) ] = value;
+            });
+        });
+
+        result
     }
 }
 
@@ -59,7 +100,7 @@ where
     T: 'static + Copy + Default + Debug,
     [(); COL * ROW]:
 {
-    type Target = Tensor<T, 2, Stack<{ COL * ROW }>>;
+    type Target = [ T; COL * ROW ];
 
     fn deref( &self ) -> &Self::Target {
         &self.0
@@ -76,99 +117,244 @@ where
     }
 }
 
+impl<T, const COL: usize, const ROW: usize> Index<usize> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    type Output = T;
+
+    fn index( &self, index: usize ) -> &Self::Output {
+        &self.0[ index ]
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> IndexMut<usize> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    fn index_mut( &mut self, index: usize ) -> &mut Self::Output {
+        &mut self.0[ index ]
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Index<[usize; 2]> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    type Output = T;
+
+    fn index( &self, index: [usize; 2] ) -> &Self::Output {
+        &self.0[ Self::idx( index[ 1 ], index[ 0 ] ) ]
+
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> IndexMut<[usize; 2]> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    fn index_mut( &mut self, index: [usize; 2] ) -> &mut Self::Output {
+        &mut self.0[ Self::idx( index[ 1 ], index[ 0 ] ) ]
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Default for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:
+{
+    fn default() -> Self {
+        Self( [ T::default(); COL * ROW ] )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<[T; COL * ROW]> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn from( src: [T; COL * ROW] ) -> Self {
+        Self( src )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<[[T; COL]; ROW]> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * ROW]:,
+{
+    fn from(src: [[T; COL]; ROW]) -> Self {
+        let mut data = [T::default(); COL * ROW];
+
+        src.iter().enumerate().for_each(
+            |( i, row )| { row.iter().enumerate().for_each(
+                |( j, &item )| data[ Self::idx( i, j ) ] = item
+            )}
+        );
+
+        Self(data)
+    }
+}
+
+#[allow(clippy::identity_op)]
+impl<T, const COL: usize> From<Vector<T, COL>> for Matrix<T, COL, 1>
+where
+    T: 'static + Copy + Default + Debug,
+    [(); COL * 1]:
+{
+    fn from( src: Vector<T, COL> ) -> Self {
+        unsafe{ ::core::ptr::read( &src as *const Vector<T, COL> as *const Matrix<T, COL, 1> ) }
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<Tensor<T, 2, Stack<{COL * ROW}>>> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn from( src: Tensor<T, 2, Stack<{COL * ROW}>> ) -> Self {
+        Self( ***src.memory() )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> PartialEq for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug + PartialEq,
+    [(); COL * ROW]:
+{
+    fn eq( &self, other: &Self ) -> bool {
+        self.0 == other.0
+    }
+}
+
+
 impl<T, const COL: usize, const ROW: usize> Add for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Add<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn add( self, other: Self ) -> Self::Output {
-        Self( self.0 + other.0 )
+        let mut result = Self::default();
+        self.iter().zip( other.iter() ).zip( result.iter_mut() )
+            .for_each( |( ( &a, &b ), c )| *c = a + b );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Sub for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn sub( self, other: Self ) -> Self::Output {
-        Self( self.0 - other.0 )
+        let mut result = Self::default();
+        self.iter().zip( other.iter() ).zip( result.iter_mut() )
+            .for_each( |( ( &a, &b ), c )| *c = a - b );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Mul for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn mul( self, other: Self ) -> Self::Output {
-        Self( self.0 * other.0 )
+        let mut result = Self::default();
+        self.iter().zip( other.iter() ).zip( result.iter_mut() )
+            .for_each( |( ( &a, &b ), c )| *c = a * b );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Div for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Div<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn div( self, other: Self ) -> Self::Output {
-        Self( self.0 / other.0 )
+        let mut result = Self::default();
+        self.iter().zip( other.iter() ).zip( result.iter_mut() )
+            .for_each( |( ( &a, &b ), c )| *c = a / b );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Add<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Add<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn add( self, scalar: T ) -> Self::Output {
-        Self( self.0 + scalar )
+        let mut result = Self::default();
+        self.iter().zip( result.iter_mut() )
+            .for_each( |( &a, c )| *c = a + scalar );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Sub<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn sub( self, scalar: T ) -> Self::Output {
-        Self( self.0 - scalar )
+        let mut result = Self::default();
+        self.iter().zip( result.iter_mut() )
+            .for_each( |( &a, c )| *c = a - scalar );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Mul<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn mul( self, scalar: T ) -> Self::Output {
-        Self( self.0 * scalar )
+        let mut result = Self::default();
+        self.iter().zip( result.iter_mut() )
+            .for_each( |( &a, c )| *c = a * scalar );
+        result
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Div<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Div<Output = T>,
+    Self: Clone,
     [(); COL * ROW]:
 {
     type Output = Self;
 
     fn div( self, scalar: T ) -> Self::Output {
-        Self( self.0 / scalar )
+        let mut result = Self::default();
+        self.iter().zip( result.iter_mut() )
+            .for_each( |( &a, c )| *c = a / scalar );
+        result
     }
 }
 
@@ -178,7 +364,8 @@ where
     [(); COL * ROW]:
 {
     fn add_assign( &mut self, other: Self ) {
-        self.0 += other.0;
+        self.iter_mut().zip( other.iter() )
+            .for_each( |( a, &b )| *a += b );
     }
 }
 
@@ -188,7 +375,8 @@ where
     [(); COL * ROW]:
 {
     fn sub_assign( &mut self, other: Self ) {
-        self.0 -= other.0;
+        self.iter_mut().zip( other.iter() )
+            .for_each( |( a, &b )| *a -= b );
     }
 }
 
@@ -198,7 +386,8 @@ where
     [(); COL * ROW]:
 {
     fn mul_assign( &mut self, other: Self ) {
-        self.0 *= other.0;
+        self.iter_mut().zip( other.iter() )
+            .for_each( |( a, &b )| *a *= b );
     }
 }
 
@@ -208,7 +397,8 @@ where
     [(); COL * ROW]:
 {
     fn div_assign( &mut self, other: Self ) {
-        self.0 /= other.0;
+        self.iter_mut().zip( other.iter() )
+            .for_each( |( a, &b )| *a /= b );
     }
 }
 
@@ -218,7 +408,8 @@ where
     [(); COL * ROW]:
 {
     fn add_assign( &mut self, scalar: T ) {
-        self.0 += scalar;
+        self.iter_mut()
+            .for_each( |a| *a += scalar );
     }
 }
 
@@ -228,7 +419,8 @@ where
     [(); COL * ROW]:
 {
     fn sub_assign( &mut self, scalar: T ) {
-        self.0 -= scalar;
+        self.iter_mut()
+            .for_each( |a| *a -= scalar );
     }
 }
 
@@ -238,7 +430,8 @@ where
     [(); COL * ROW]:
 {
     fn mul_assign( &mut self, scalar: T ) {
-        self.0 *= scalar;
+        self.iter_mut()
+            .for_each( |a| *a *= scalar );
     }
 }
 
@@ -248,7 +441,8 @@ where
     [(); COL * ROW]:
 {
     fn div_assign( &mut self, scalar: T ) {
-        self.0 /= scalar;
+        self.iter_mut()
+            .for_each( |a| *a /= scalar );
     }
 }
 
@@ -343,7 +537,7 @@ mod tests {
     #[test]
     fn iter_test() {
         let src = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
-        let matrix = Matrix3x3::<u32>::take( src );
+        let matrix = Matrix3x3::<u32>::from( src );
         for ( i, value ) in matrix.deref().iter().enumerate() {
             assert_eq!( value, &src[ i ] );
         }
@@ -353,17 +547,17 @@ mod tests {
     fn mat_mul_test() {
         use crate::tensor::contract;
 
-        let a = Matrix2x2::<f32>::take([
+        let a = Matrix2x2::<f32>::from([
             1.0, 2.0,
             3.0, 4.0
         ]);
 
-        let b = Matrix2x2::<f32>::take([
+        let b = Matrix2x2::<f32>::from([
             1.0, 2.0,
             3.0, 4.0
         ]);
 
-        let mut c = Matrix2x2::<f32>::take([
+        let c = Matrix2x2::<f32>::from([
             0.0, 0.0,
             0.0, 0.0
         ]);
@@ -373,6 +567,9 @@ mod tests {
         println!( "b: {:?}", b );
         println!( "c: {:?}", c );
 
+        let a: Tensor<f32, 2, Stack<4>> = a.into();
+        let b: Tensor<f32, 2, Stack<4>> = b.into();
+        let mut c: Tensor<f32, 2, Stack<4>> = c.into();
         contract( &a, &b, &mut c, &[1], &[0] );
 
         println!( "After:");

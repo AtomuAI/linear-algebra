@@ -14,16 +14,21 @@ pub enum Error {
 pub struct Shape<const N: usize> ( [usize; N] );
 
 impl<const N: usize> Shape<N> {
+    pub const fn new_const( dim: [usize; N] ) -> Self {
+        Self ( dim )
+    }
+
     pub fn new() -> Self {
         Self ( [0; N] )
     }
 
-    pub fn dim( &self ) -> usize {
+    #[inline(always)]
+    pub const fn dim( &self ) -> usize {
         N
     }
 
     pub fn vol( &self ) -> usize {
-        self.0.iter().product()
+        self.iter().product()
     }
 }
 

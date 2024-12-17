@@ -4,10 +4,13 @@
 
 use std::{
     fmt::Debug,
-    ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
+    ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign },
+    marker::PhantomData
 };
 
 use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
+use crate::vector::Vector;
+use crate::matrix::Matrix;
 
 use crate::{
     shape::Shape,
@@ -66,7 +69,7 @@ where
 }
 
 #[allow(clippy::needless_lifetimes)]
-trait TensorAccess<T, const DIM: usize, M>
+pub(crate) trait TensorAccess<T, const DIM: usize, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType,
@@ -86,8 +89,7 @@ where
     Memory<T, M>: MemoryTraits<Type = T>,
     Self: Sized
 {
-    fn new( shape: Shape<DIM> ) -> Self;
-    fn take( shape: Shape<DIM>, src: <Memory<T, M> as MemoryTraits>::Take ) -> Self;
+    fn new( shape: Shape<DIM>, src: <Memory<T, M> as MemoryTraits>::New ) -> Self;
 
     fn dim( &self ) -> usize {
         self._shape().dim()
@@ -190,20 +192,13 @@ where
 impl<T, const DIM: usize, const N: usize> TensorTraits<T, DIM, Stack<N>> for Tensor<T, DIM, Stack<N>>
 where
     T: Default + Clone + Copy + Debug,
-    Memory<T, Stack<N>>: MemoryTraits<Type = T, New = (), Take = [T; N]>,
+    Memory<T, Stack<N>>: MemoryTraits<Type = T, New = [T; N]>,
 {
-    fn new( shape: Shape<DIM> ) -> Self {
-        Self {
-            shape,
-            memory: Memory::<T, Stack<N>>::new( () )
-        }
-    }
-
-    fn take( shape: Shape<DIM>, memory: [T; N] ) -> Self {
+    fn new( shape: Shape<DIM>, memory: [T; N] ) -> Self {
         if shape.vol() != N { panic!( "Mismatched sizes" ); }
         Self {
             shape,
-            memory: Memory::<T, Stack<N>>::take( memory )
+            memory: Memory::<T, Stack<N>>::new( memory )
         }
     }
 }
@@ -211,23 +206,13 @@ where
 impl<T, const DIM: usize> TensorTraits<T, DIM, Heap> for Tensor<T, DIM, Heap>
 where
     T: Default + Clone + Copy + Debug,
-    Memory<T, Heap>: MemoryTraits<Type = T, New = usize, Take = Vec<T>>,
+    Memory<T, Heap>: MemoryTraits<Type = T, New = Vec<T>>,
 {
-    fn new( shape: Shape<DIM> ) -> Self {
-        let vol = shape.vol();
-        let mut memory = Memory::<T, Heap>::new( vol );
-        memory.resize( vol, T::default() );
-        Self {
-            shape,
-            memory
-        }
-    }
-
-    fn take( shape: Shape<DIM>, memory: Vec<T> ) -> Self {
+    fn new( shape: Shape<DIM>, memory: Vec<T> ) -> Self {
         if shape.vol() != memory.len() { panic!( "Mismatched sizes" ); }
         Self {
             shape,
-            memory: Memory::<T, Heap>::take( memory )
+            memory: Memory::<T, Heap>::new( memory )
         }
     }
 }
@@ -337,6 +322,35 @@ where
             sum += a[index_a] * b[index_b];
         }
         c[index_c] = sum;
+    }
+}
+
+impl<T, const COL: usize> From<Vector<T, COL>> for Tensor<T, 1, Stack<COL>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<COL>>: MemoryTraits<Type = T, New = [T; COL]>,
+    Self: Clone + TensorTraits<T, 1, Stack<COL>>
+{
+    fn from( src: Vector<T, COL> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src
+        )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Tensor<T, 2, Stack<{COL * ROW}>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<{COL * ROW}>>: MemoryTraits<Type = T, New = [T; {COL * ROW}]>,
+    Self: Clone + TensorTraits<T, 2, Stack<{COL * ROW}>>,
+    [(); COL * ROW]:
+{
+    fn from( src: Matrix<T, COL, ROW> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src
+        )
     }
 }
 
@@ -716,13 +730,16 @@ mod tests {
 
     #[test]
     fn new_stack_test() {
-        let tensor = Tensor::<f32, 1, Stack<3>>::new( [3].into() );
+        let tensor = Tensor::<f32, 1, Stack<3>>::new(
+            [3].into(),
+            [0.0, 0.0, 0.0]
+        );
         assert_eq!( tensor.memory.len(), 3 );
     }
 
     #[test]
     fn take_stack_test() {
-        let tensor = Tensor::<f32, 1, Stack<3>>::take(
+        let tensor = Tensor::<f32, 1, Stack<3>>::new(
             [3].into(),
             [1.0, 2.0, 3.0]
         );
@@ -731,13 +748,16 @@ mod tests {
 
     #[test]
     fn new_heap_test() {
-        let tensor = Tensor::<f32, 1, Heap>::new( [3].into() );
+        let tensor = Tensor::<f32, 1, Heap>::new(
+            [3].into(),
+            [ 0.0, 0.0, 0.0 ].into()
+        );
         assert_eq!( tensor.memory.len(), 3 );
     }
 
     #[test]
     fn take_heap_test() {
-        let tensor = Tensor::<f32, 1, Heap>::take(
+        let tensor = Tensor::<f32, 1, Heap>::new(
             [3].into(),
             [ 1.0, 2.0, 3.0 ].into()
         );
@@ -746,7 +766,13 @@ mod tests {
 
     #[test]
     fn identity_test() {
-        let mut tensor = Tensor::<f32, 2, Heap>::new( [2, 2].into() );
+        let mut tensor = Tensor::<f32, 2, Heap>::new(
+            [2, 2].into(),
+            [
+                0.0, 0.0,
+                0.0, 0.0
+            ].into()
+        );
         tensor.identity( 1.0 );
         println!( "tensor: {:?}", tensor );
         assert_eq!( tensor[ [0, 0] ], 1.0 );
@@ -757,7 +783,10 @@ mod tests {
 
     #[test]
     fn iter_test() {
-        let mut tensor = Tensor::<f32, 1, Heap>::new( [3].into() );
+        let mut tensor = Tensor::<f32, 1, Heap>::new(
+            [3].into(),
+            [ 0.0, 0.0, 0.0 ].into()
+        );
         tensor[ 0 ] = 1.0;
         tensor[ 1 ] = 2.0;
         tensor[ 2 ] = 3.0;
@@ -771,7 +800,7 @@ mod tests {
 
     #[test]
     fn contract_test() {
-        let a = Tensor::<f32, 2, Heap>::take(
+        let a = Tensor::<f32, 2, Heap>::new(
             [2, 2].into(),
             [
                 1.0, 2.0,
@@ -779,7 +808,7 @@ mod tests {
             ].into()
         );
 
-        let b = Tensor::<f32, 2, Heap>::take(
+        let b = Tensor::<f32, 2, Heap>::new(
             [2, 2].into(),
             [
                 1.0, 2.0,
@@ -787,7 +816,7 @@ mod tests {
             ].into()
         );
 
-        let mut c = Tensor::<f32, 2, Stack<4>>::take(
+        let mut c = Tensor::<f32, 2, Stack<4>>::new(
             [2, 2].into(),
             [
                 0.0, 0.0,

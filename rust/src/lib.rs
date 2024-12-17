@@ -9,3 +9,7 @@ pub mod tensor;
 //pub mod slice;
 pub mod vector;
 pub mod matrix;
+pub mod polynomial;
+pub mod generalized_polynomial;
+//pub mod quaternion;
+//pub mod rotation;
