@@ -23,7 +23,7 @@ impl<const N: usize> Shape<N> {
     }
 
     #[inline(always)]
-    pub const fn dim( &self ) -> usize {
+    pub const fn ord( &self ) -> usize {
         N
     }
 

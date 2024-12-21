@@ -8,74 +8,172 @@ use std::{
 };
 use num::traits::Num;
 
-use memory::stack::Stack;
+use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
+    ops::{
+        InnerProduct,
+        InnerProductAssignTo,
+        OuterProduct,
+        OuterProductAssignTo,
+        Transpose,
+        TransposeAssign,
+        TransposeAssignTo
+    },
     vector::Vector,
     shape::Shape,
-    tensor::{ Tensor, TensorAccess }
+    tensor::{ Tensor, TensorAccess, TensorTraits }
 };
 
-#[derive( Clone, Debug )]
-pub struct Matrix<T, const COL: usize, const ROW: usize>( [ T; COL * ROW ] ) where T: 'static + Copy + Default + Debug, [(); COL * ROW]:;
+/// A matrix type of generic element and size.
+///
+#[derive( Clone, Copy )]
+pub struct Matrix<T, const COL: usize, const ROW: usize>( [ T; COL * ROW ] ) where T: 'static + Copy + Default + Debug, [ (); COL * ROW ]:;
 
 impl<T, const COL: usize, const ROW: usize> Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
+    /// Creates a new const [`Matrix`].
+    ///
     pub const fn new_const( src: [T; COL * ROW] ) -> Self {
-        Self( src )
+        Self ( src )
     }
 
-    pub fn new() -> Self
+    /// Creates a new [`Matrix`].
+    ///
+    pub fn new( src: [T; COL * ROW] ) -> Self {
+        Self ( src )
+    }
+
+    /// Creates a new zero filled [`Matrix`].
+    ///
+    pub fn zero() -> Self
     where
         T: Num
     {
-        Self( [ T::zero(); COL * ROW ] )
+        Self ( [T::zero(); COL * ROW] )
     }
 
+    /// Creates a new identity (diagonally) filled [`Matrix`].
+    ///
+    pub fn eye() -> Self
+    where
+        T: Num
+    {
+        Self ( {
+            let mut data = [ T::zero(); COL * ROW ];
+            ( 0..COL.min( ROW ) ).for_each( |i| data[ Self::idx( i, i ) ] = T::one() );
+            data
+        })
+    }
+
+    /// Returns the order of the [`Matrix`].
+    ///
+    /// The order of a [`Matrix`] is always 2.
+    ///
     #[inline(always)]
-    pub const fn dim( &self ) -> usize {
+    pub const fn ord( &self ) -> usize {
         2
     }
 
+    /// Returns the number of columns in the [`Matrix`].
+    ///
+    /// The number of columns in a [`Matrix`] is always `COL`.
+    ///
     #[inline(always)]
     pub const fn cols() -> usize {
         COL
     }
 
+    /// Returns the number of rows in the [`Matrix`].
+    ///
+    /// The number of rows in a [`Matrix`] is always `ROW`.
+    ///
     #[inline(always)]
     pub const fn rows() -> usize {
         ROW
     }
 
+    /// Returns the total number of elements in the [`Matrix`].
+    ///
+    /// The total number of elements in a [`Matrix`] is always `COL * ROW`.
+    ///
+    #[inline(always)]
+    pub const fn area() -> usize {
+        COL * ROW
+    }
+
+    /// Returns the shape of the [`Matrix`].
+    ///
+    /// The shape of a [`Matrix`] is always `[COL, ROW]`.
+    ///
     #[inline(always)]
     pub const fn shape( &self ) -> Shape<2> {
-        Shape::new_const( [COL, ROW] )
+        Shape::new_const( [ COL, ROW ] )
     }
 
+    /// Returns the index of the [`Matrix`] at the given column and row.
+    ///
     #[inline(always)]
     pub fn idx( col: usize, row: usize ) -> usize {
-        row * ROW + col
+        ( row * COL ) + col
     }
 
+    /// Returns the index of the [`Matrix`] at the given column and row.
+    ///
     #[inline(always)]
     pub const fn idx_const( col: usize, row: usize ) -> usize {
-        row * ROW + col
+        ( row * COL ) + col
     }
 
-    pub fn reshape<const NEW_COL: usize, const NEW_ROW: usize>(&self) -> &Matrix<T, NEW_COL, NEW_ROW>
+    /// Returns the column and row of the [`Matrix`] at the given index.
+    ///
+    #[inline(always)]
+    pub fn coord( idx: usize ) -> [usize; 2] {
+        [ idx % COL, idx / COL ]
+    }
+
+    /// Returns the column and row of the [`Matrix`] at the given index.
+    ///
+    #[inline(always)]
+    pub const fn coord_const( idx: usize ) -> [usize; 2] {
+        [ idx % COL, idx / COL ]
+    }
+
+    /// Fill the [`Matrix`] with a given value.
+    ///
+    pub fn fill( &mut self, value: T ) {
+        self.0.iter_mut().for_each( |item| *item = value );
+    }
+
+    /// Clear the [`Matrix`].
+    ///
+    pub fn clear( &mut self )
+    where
+        T: Default
+    {
+        self.0.iter_mut().for_each( |item| *item = T::default() );
+    }
+
+    /// Reshapes the [`Matrix`] with the new column and row sizes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the total number of elements is not the same.
+    ///
+    pub fn reshape<const NEW_COL: usize, const NEW_ROW: usize>( self ) -> Matrix<T, NEW_COL, NEW_ROW>
     where
         T: Default + Copy + Debug,
         [(); NEW_COL * NEW_ROW]:,
     {
         assert_eq!( COL * ROW, NEW_COL * NEW_ROW, "Total number of elements must remain the same for reshape." );
-        unsafe { // SAFETY: This is safe because we have asserted that the total number of elements is the same
-            &*( self as *const Matrix<T, COL, ROW> as *const Matrix<T, NEW_COL, NEW_ROW> )
-        }
+        unsafe { *( &self as *const Matrix<T, COL, ROW> as *const Matrix<T, NEW_COL, NEW_ROW> ) } // SAFETY: This is safe because we have asserted that the total number of elements is the same
     }
 
+    /// Resizes the [`Matrix`] with the new column and row sizes.
+    ///
     pub fn resize<const NEW_COL: usize, const NEW_ROW: usize>( &self ) -> Matrix<T, NEW_COL, NEW_ROW>
     where
         T: Default + Copy + Debug,
@@ -93,12 +191,129 @@ where
 
         result
     }
+
+    /// Returns an iterator over the elements of the [`Matrix`].
+    ///
+    /// The iterator yields references to the elements of the [`Matrix`] in order.
+    ///
+    pub fn iter( &self ) -> impl Iterator<Item = &T> {
+        self.0.iter()
+    }
+
+    /// Returns an iterator over mutable references to the elements of the [`Matrix`].
+    ///
+    /// The iterator yields mutable references to the elements of the [`Matrix`] in order.
+    ///
+    pub fn iter_mut( &mut self ) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut()
+    }
+
+    /// Returns an iterator over the elements of the [`Matrix`] by row.
+    ///
+    /// The iterator yields references to the elements of the [`Matrix`] by row.
+    ///
+    pub fn iter_row( &self, row: usize ) -> impl Iterator<Item = &T> {
+        self.0[ Self::idx( row, 0_usize )..Self::idx( row, COL ) ].iter()
+    }
+
+    /// Returns an iterator over mutable references to the elements of the [`Matrix`] by row.
+    ///
+    /// The iterator yields mutable references to the elements of the [`Matrix`] by row.
+    ///
+    pub fn iter_row_mut( &mut self, row: usize ) -> impl Iterator<Item = &mut T> {
+        self.0[ Self::idx( row, 0_usize )..Self::idx( row, COL ) ].iter_mut()
+    }
+
+    /// Returns an iterator over the elements of the [`Matrix`] by column.
+    ///
+    /// The iterator yields references to the elements of the [`Matrix`] by column.
+    ///
+    pub fn iter_col( &self, col: usize ) -> impl Iterator<Item = &T> {
+        ( 0..ROW ).map( move |row| &self[[ col, row ]] )
+    }
+
+    /// Returns an iterator over mutable references to the elements of the [`Matrix`] by column.
+    ///
+    /// The iterator yields mutable references to the elements of the [`Matrix`] by column.
+    ///
+    pub fn iter_col_mut( &mut self, col: usize ) -> impl Iterator<Item = &mut T> {
+        ( 0..ROW ).map( move |row| unsafe { &mut *( &mut self[[ col, row ]] as *mut _ ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
+    }
+
+    /// Returns an iterator over the rows of the [`Matrix`].
+    ///
+    /// The iterator yields slices of the rows of the [`Matrix`].
+    ///
+    pub fn iter_rows( &self ) -> impl Iterator<Item = &[T]> {
+        self.0.chunks( COL )
+    }
+
+    /// Returns an iterator over mutable references to the rows of the [`Matrix`].
+    ///
+    /// The iterator yields mutable slices of the rows of the [`Matrix`].
+    ///
+    pub fn iter_rows_mut( &mut self ) -> impl Iterator<Item = &mut [T]> {
+        self.0.chunks_mut( COL )
+    }
+
+    /// Returns an iterator over the columns of the [`Matrix`].
+    ///
+    /// The iterator yields slices of the columns of the [`Matrix`].
+    ///
+    pub fn iter_cols( &self ) -> impl Iterator<Item = impl Iterator<Item = &T>> {
+        ( 0..COL ).map( move |col| self.iter_col( col ) )
+    }
+
+    /// Returns an iterator over mutable references to the columns of the [`Matrix`].
+    ///
+    /// The iterator yields mutable slices of the columns of the [`Matrix`].
+    ///
+    pub fn iter_cols_mut( &mut self ) -> impl Iterator<Item = impl Iterator<Item = &mut T>> {
+        ( 0..COL ).map( move |col| {
+            let matrix_ptr = self.0.as_mut_ptr();
+            ( 0..ROW ).map( move |row| unsafe { &mut *matrix_ptr.add( Self::idx( col, row ) ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
+        })
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> std::fmt::Display for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        for row in self.iter_rows() {
+            for item in row {
+                write!( f, "{:?} ", item )?;
+            }
+            writeln!( f )?;
+        }
+        Ok(())
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Debug for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        writeln!( f, "Matrix{{" )?;
+        for row in self.iter_rows() {
+            write!( f, "  [" )?;
+            for item in row {
+                write!( f, "{:?}, ", item )?;
+            }
+            writeln!( f, "]" )?;
+        }
+        write!( f, "}}" )
+    }
 }
 
 impl<T, const COL: usize, const ROW: usize> Deref for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Target = [ T; COL * ROW ];
 
@@ -110,7 +325,7 @@ where
 impl<T, const COL: usize, const ROW: usize> DerefMut for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn deref_mut( &mut self ) -> &mut Self::Target {
         &mut self.0
@@ -120,7 +335,7 @@ where
 impl<T, const COL: usize, const ROW: usize> Index<usize> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = T;
 
@@ -132,7 +347,7 @@ where
 impl<T, const COL: usize, const ROW: usize> IndexMut<usize> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn index_mut( &mut self, index: usize ) -> &mut Self::Output {
         &mut self.0[ index ]
@@ -142,12 +357,12 @@ where
 impl<T, const COL: usize, const ROW: usize> Index<[usize; 2]> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = T;
 
     fn index( &self, index: [usize; 2] ) -> &Self::Output {
-        &self.0[ Self::idx( index[ 1 ], index[ 0 ] ) ]
+        &self.0[ Self::idx( index[ 0 ], index[ 1 ] ) ]
 
     }
 }
@@ -155,20 +370,20 @@ where
 impl<T, const COL: usize, const ROW: usize> IndexMut<[usize; 2]> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn index_mut( &mut self, index: [usize; 2] ) -> &mut Self::Output {
-        &mut self.0[ Self::idx( index[ 1 ], index[ 0 ] ) ]
+        &mut self.0[ Self::idx( index[ 0 ], index[ 1 ] ) ]
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> Default for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn default() -> Self {
-        Self( [ T::default(); COL * ROW ] )
+        Self ( [ T::default(); COL * ROW ] )
     }
 }
 
@@ -177,14 +392,14 @@ where
     T: 'static + Copy + Default + Debug
 {
     fn from( src: [T; COL * ROW] ) -> Self {
-        Self( src )
+        Self ( src )
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> From<[[T; COL]; ROW]> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * ROW]:,
+    [ (); COL * ROW ]:,
 {
     fn from(src: [[T; COL]; ROW]) -> Self {
         let mut data = [T::default(); COL * ROW];
@@ -195,7 +410,7 @@ where
             )}
         );
 
-        Self(data)
+        Self (data)
     }
 }
 
@@ -215,14 +430,29 @@ where
     T: 'static + Copy + Default + Debug
 {
     fn from( src: Tensor<T, 2, Stack<{COL * ROW}>> ) -> Self {
-        Self( ***src.memory() )
+        Self ( ***src.memory() )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<Tensor<T, 2, Heap>> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    fn from( src: Tensor<T, 2, Heap> ) -> Self {
+        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
+        if src.shape()[1] != ROW { panic!( "Mismatched row length" ); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
     }
 }
 
 impl<T, const COL: usize, const ROW: usize> PartialEq for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug + PartialEq,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn eq( &self, other: &Self ) -> bool {
         self.0 == other.0
@@ -234,7 +464,7 @@ impl<T, const COL: usize, const ROW: usize> Add for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Add<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -250,7 +480,7 @@ impl<T, const COL: usize, const ROW: usize> Sub for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -266,7 +496,7 @@ impl<T, const COL: usize, const ROW: usize> Mul for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -282,7 +512,7 @@ impl<T, const COL: usize, const ROW: usize> Div for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Div<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -298,7 +528,7 @@ impl<T, const COL: usize, const ROW: usize> Add<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Add<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -314,7 +544,7 @@ impl<T, const COL: usize, const ROW: usize> Sub<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -330,7 +560,7 @@ impl<T, const COL: usize, const ROW: usize> Mul<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -346,7 +576,7 @@ impl<T, const COL: usize, const ROW: usize> Div<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + Div<Output = T>,
     Self: Clone,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     type Output = Self;
 
@@ -361,7 +591,7 @@ where
 impl<T, const COL: usize, const ROW: usize> AddAssign for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + AddAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn add_assign( &mut self, other: Self ) {
         self.iter_mut().zip( other.iter() )
@@ -372,7 +602,7 @@ where
 impl<T, const COL: usize, const ROW: usize> SubAssign for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + SubAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn sub_assign( &mut self, other: Self ) {
         self.iter_mut().zip( other.iter() )
@@ -383,7 +613,7 @@ where
 impl<T, const COL: usize, const ROW: usize> MulAssign for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + MulAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn mul_assign( &mut self, other: Self ) {
         self.iter_mut().zip( other.iter() )
@@ -394,7 +624,7 @@ where
 impl<T, const COL: usize, const ROW: usize> DivAssign for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + DivAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn div_assign( &mut self, other: Self ) {
         self.iter_mut().zip( other.iter() )
@@ -405,7 +635,7 @@ where
 impl<T, const COL: usize, const ROW: usize> AddAssign<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + AddAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn add_assign( &mut self, scalar: T ) {
         self.iter_mut()
@@ -416,7 +646,7 @@ where
 impl<T, const COL: usize, const ROW: usize> SubAssign<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + SubAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn sub_assign( &mut self, scalar: T ) {
         self.iter_mut()
@@ -427,7 +657,7 @@ where
 impl<T, const COL: usize, const ROW: usize> MulAssign<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + MulAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn mul_assign( &mut self, scalar: T ) {
         self.iter_mut()
@@ -438,11 +668,301 @@ where
 impl<T, const COL: usize, const ROW: usize> DivAssign<T> for Matrix<T, COL, ROW>
 where
     T: Default + Copy + Debug + DivAssign,
-    [(); COL * ROW]:
+    [ (); COL * ROW ]:
 {
     fn div_assign( &mut self, scalar: T ) {
         self.iter_mut()
             .for_each( |a| *a /= scalar );
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> InnerProduct<Matrix<T, ROW, COL>> for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:,
+    [(); COL * COL]:
+{
+    type Output = Matrix<T, COL, COL>;
+
+    fn inner_product( self, rhs: Matrix<T, ROW, COL> ) -> Self::Output {
+        let mut res = Matrix::<T, COL, COL>::default();
+        for i in 0..COL {
+            for j in 0..ROW {
+                for k in 0..COL {
+                    res[[ i, k ]] += self[[ i, j ]] * rhs[[ j, k ]];
+                }
+            }
+        }
+        res
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> InnerProduct for &Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:,
+    [(); COL * COL]:
+{
+    type Output = Vector<T, COL>;
+
+    fn inner_product( self, rhs: Self ) -> Self::Output {
+        let mut res = Self::Output::default();
+        for row in 0..ROW {
+            for col in 0..COL {
+                    res[ col ] += self[[ col, row ]] * rhs[[ col, row ]];
+            }
+        }
+        res
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> InnerProductAssignTo for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:,
+    [(); COL * COL]:
+{
+    type Output = Vector<T, COL>;
+
+    fn inner_product_assign_to( self, rhs: Self, res: &mut Self::Output ) {
+        for row in 0..ROW {
+            for col in 0..COL {
+                    res[ col ] += self[[ col, row ]] * rhs[[ col, row ]];
+            }
+        }
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> InnerProductAssignTo for &Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:,
+    [(); COL * COL]:
+{
+    type Output = Vector<T, COL>;
+
+    fn inner_product_assign_to( self, rhs: Self, res: &mut Self::Output ) {
+        for row in 0..ROW {
+            for col in 0..COL {
+                    res[ col ] += self[[ col, row ]] * rhs[[ col, row ]];
+            }
+        }
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> OuterProduct<Matrix<T, RHS_COL, RHS_ROW>> for Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:
+{
+    type Output = Tensor<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>;
+
+    fn outer_product( self, rhs: Matrix<T, RHS_COL, RHS_ROW> ) -> Self::Output {
+        let mut res = Tensor::<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>::new(
+            [ LHS_COL, RHS_COL, LHS_ROW, RHS_ROW ].into(),
+            [ T::default(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW ]
+        );
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                for k in 0..LHS_ROW {
+                    for l in 0..RHS_ROW {
+                        res[[ i, j, k, l ]] = self[[ i, j ]] * rhs[[ k, l ]];
+                    }
+                }
+            }
+        }
+        res
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> OuterProduct<&Matrix<T, RHS_COL, RHS_ROW>> for &Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:
+{
+    type Output = Tensor<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>;
+
+    fn outer_product( self, rhs: &Matrix<T, RHS_COL, RHS_ROW> ) -> Self::Output {
+        let mut res = Tensor::<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>::new(
+            [ LHS_COL, RHS_COL, LHS_ROW, RHS_ROW ].into(),
+            [ T::default(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW ]
+        );
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                for k in 0..LHS_ROW {
+                    for l in 0..RHS_ROW {
+                        res[[ i, j, k, l ]] = self[[ i, j ]] * rhs[[ k, l ]];
+                    }
+                }
+            }
+        }
+        res
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> OuterProductAssignTo<Matrix<T, RHS_COL, RHS_ROW>> for Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:
+{
+    type Output = Tensor<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>;
+
+    fn outer_product_assign_to( self, rhs: Matrix<T, RHS_COL, RHS_ROW>, res: &mut Self::Output ) {
+        if res.shape()[0] != LHS_COL { panic!( "Mismatched column length" ); }
+        if res.shape()[1] != RHS_COL { panic!( "Mismatched column length" ); }
+        if res.shape()[2] != LHS_ROW { panic!( "Mismatched row length" ); }
+        if res.shape()[3] != RHS_ROW { panic!( "Mismatched row length" ); }
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                for k in 0..LHS_ROW {
+                    for l in 0..RHS_ROW {
+                        res[[ i, j, k, l ]] = self[[ i, j ]] * rhs[[ k, l ]];
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> OuterProductAssignTo<&Matrix<T, RHS_COL, RHS_ROW>> for &Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:
+{
+    type Output = Tensor<T, 4, Stack<{LHS_COL * RHS_COL * LHS_ROW * RHS_ROW}>>;
+
+    fn outer_product_assign_to( self, rhs: &Matrix<T, RHS_COL, RHS_ROW>, res: &mut Self::Output ) {
+        if res.shape()[0] != LHS_COL { panic!( "Mismatched column length" ); }
+        if res.shape()[1] != RHS_COL { panic!( "Mismatched column length" ); }
+        if res.shape()[2] != LHS_ROW { panic!( "Mismatched row length" ); }
+        if res.shape()[3] != RHS_ROW { panic!( "Mismatched row length" ); }
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                for k in 0..LHS_ROW {
+                    for l in 0..RHS_ROW {
+                        res[[ i, j, k, l ]] = self[[ i, j ]] * rhs[[ k, l ]];
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<T, const COL: usize> Transpose for Matrix<T, COL, COL>
+where
+    T: Default + Copy + Debug,
+    [(); COL * COL]:,
+{
+    type Output = Self;
+
+    fn transpose( mut self ) -> Self::Output {
+        for row in 0..COL {
+            for col in ( row + 1 )..COL {
+                let idx1 = Self::idx( col, row );
+                let idx2 = Self::idx( row, col );
+                let a = self.0[ idx1 ];
+                let b = self.0[ idx2 ];
+                self.0[ idx1 ] = b;
+                self.0[ idx2 ] = a;
+            }
+        }
+        self
+    }
+}
+
+//TODO: Implement in-place non-square matrix transpose
+#[cfg(any())]
+impl<T, const COL: usize, const ROW: usize> Transpose for Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug,
+    [(); COL * COL]:,
+{
+    type Output = Self;
+
+    fn transpose( mut self ) -> Self::Output {
+        for row in 0..COL {
+            for col in ( row + 1 )..COL {
+                let idx1 = Self::idx( col, row );
+                let idx2 = Self::idx( row, col );
+                let a = self.0[ idx1 ];
+                let b = self.0[ idx2 ];
+                self.0[ idx1 ] = b;
+                self.0[ idx2 ] = a;
+            }
+        }
+        unsafe { *( &self as *const Matrix<T, COL, ROW> as *const Matrix<T, ROW, COL> ) } // SAFETY: The transposed matrix is the same size as the original matrix.
+    }
+}
+
+impl<T, const COL: usize> TransposeAssign for Matrix<T, COL, COL>
+where
+    T: Default + Copy + Debug,
+    [(); COL * COL]:,
+{
+    fn transpose_assign( &mut self ) {
+        for row in 0..COL {
+            for col in ( row + 1 )..COL {
+                let idx1 = Self::idx( col, row );
+                let idx2 = Self::idx( row, col );
+                let a = self.0[ idx1 ];
+                let b = self.0[ idx2 ];
+                self.0[ idx1 ] = b;
+                self.0[ idx2 ] = a;
+            }
+        }
+    }
+}
+
+
+impl<T, const COL: usize, const ROW: usize> Transpose for &Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:
+{
+    type Output = Matrix<T, ROW, COL>;
+
+    fn transpose( self ) -> Self::Output {
+        let mut res = Matrix::<T, ROW, COL>::default();
+        for row in 0..ROW {
+            for col in 0..COL {
+                let idx1 = Matrix::<T, COL, ROW>::idx( col, row );
+                let idx2 = Matrix::<T, ROW, COL>::idx( row, col );
+                res[ idx2 ] = self.0[ idx1 ];
+            }
+        }
+        res
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> TransposeAssignTo for &Matrix<T, COL, ROW>
+where
+    T: Default + Copy + Debug,
+    [ (); COL * ROW ]:,
+    [(); ROW * COL]:
+{
+    type Output = Matrix<T, ROW, COL>;
+
+    fn transpose_assign_to( self, res: &mut Self::Output ) {
+        for row in 0..ROW {
+            for col in 0..COL {
+                let idx1 = Matrix::<T, COL, ROW>::idx( col, row );
+                let idx2 = Matrix::<T, ROW, COL>::idx( row, col );
+                res[ idx2 ] = self.0[ idx1 ];
+            }
+        }
     }
 }
 
@@ -524,7 +1044,7 @@ mod tests {
 
     #[test]
     fn new_test() {
-        let matrix = Matrix2x2::<f32>::new();
+        let matrix = Matrix2x2::<f32>::zero();
         assert_eq!( matrix[ 0 ], 0.0 );
     }
 
@@ -581,5 +1101,37 @@ mod tests {
         assert_eq!( c[[0, 1]], 10.0 );
         assert_eq!( c[[1, 0]], 15.0 );
         assert_eq!( c[[1, 1]], 22.0 );
+    }
+
+    #[test]
+    fn transpose_inplace_square_test() {
+        let src = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
+        let matrix = Matrix3x3::<u32>::from( src );
+        let transposed = matrix.transpose();
+        println!( "Before:" );
+        println!( "matrix: {:?}", matrix );
+        println!( "After:" );
+        println!( "transposed: {:?}", transposed );
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_eq!( matrix[[ i, j ]], transposed[[ j, i ]] );
+            }
+        }
+    }
+
+    #[test]
+    fn transpose_non_square_test() {
+        let src = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ];
+        let matrix = Matrix4x3::<u32>::from( src );
+        let transposed = matrix.transpose();
+        println!( "Before:" );
+        println!( "matrix: {:?}", matrix );
+        println!( "After:" );
+        println!( "transposed: {:?}", transposed );
+        for j in 0..3 {
+            for i in 0..4 {
+                assert_eq!( matrix[[ i, j ]], transposed[[ j, i ]] );
+            }
+        }
     }
 }

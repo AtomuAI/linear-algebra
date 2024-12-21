@@ -8,53 +8,82 @@ use std::{
 };
 use num::traits::Num;
 
-use memory::stack::Stack;
+use memory::{ stack::Stack, heap::Heap };
 use arithmetic::{ AddAssignTo, SubAssignTo, MulAssignTo, DivAssignTo };
 
 use crate::{
+    ops::{
+        InnerProduct,
+        OuterProduct,
+        OuterProductAssignTo
+    },
     matrix::Matrix,
     shape::Shape,
-    tensor::{ Tensor, TensorAccess }
+    tensor::{ Tensor, TensorAccess, TensorTraits }
 };
 
-#[derive( Clone, Debug )]
+/// A vector type of generic element and size.
+///
+#[derive( Clone, Copy, Debug )]
 pub struct Vector<T: 'static + Default + Copy + Debug, const COL: usize>( [ T; COL ] );
 
 impl<T, const COL: usize> Vector<T, COL>
 where
     T: 'static + Copy + Default + Debug
 {
+    /// Creates a new const [`Vector`].
+    ///
     pub const fn new_const( src: [T; COL] ) -> Self {
-        Self( src )
+        Self ( src )
     }
 
+    /// Creates a new [`Vector`].
+    ///
     pub fn new( src: [T; COL] ) -> Self {
-        Self( src )
+        Self ( src )
     }
 
+    /// Creates a new zero filled [`Vector`].
+    ///
     pub fn zero() -> Self
     where
         T: Num
     {
-        Self( [T::zero(); COL] )
+        Self ( [T::zero(); COL] )
     }
 
+    /// Returns the order of the [`Vector`].
+    ///
+    /// The order of a [`Vector`] is always 1.
+    ///
     #[inline(always)]
-    pub const fn dim( &self ) -> usize {
+    pub const fn ord( &self ) -> usize {
         1
     }
 
+    /// Returns the number of columns in the [`Vector`].
+    ///
+    /// The number of columns in a [`Vector`] is always the same as the size of the [`Vector`].
+    ///
     #[inline(always)]
     pub const fn cols() -> usize {
         COL
     }
 
+    /// Returns the shape of the [`Vector`].
+    ///
+    /// The shape of a [`Vector`] is always a single column.
+    ///
     #[inline(always)]
     pub const fn shape( &self ) -> Shape<1> {
         Shape::new_const( [COL] )
     }
 
-    pub fn resize<const NEW_COL: usize>( &self ) -> Vector<T, NEW_COL>
+    /// Resizes the [`Vector`] to a new size.
+    ///
+    /// Creates a newly sized [`Vector`] with the same elements as the original [`Vector`].
+    ///
+    pub fn resize<const NEW_COL: usize>( self ) -> Vector<T, NEW_COL>
     where
         T: Default + Copy + Debug,
     {
@@ -64,12 +93,32 @@ where
         result
     }
 
+    /// Returns the dot product of two [`Vector`]s.
+    ///
+    /// The dot product of two [`Vector`]s is the sum of the products of the corresponding elements of the two [`Vector`]s.
+    ///
     pub fn dot( &self, other: &Self ) -> T
     where
-        T: Default + Copy + Debug + Add<Output = T> + Mul<Output = T>
+        T: Default + Copy + Debug + Add<Output = T> + Mul<Output = T>,
+        Self: InnerProduct<Self, Output = T>
     {
-        self.iter().zip( other.iter() )
-            .fold( T::default(), |acc, ( &a, &b )| acc + a * b )
+        self.inner_product( other )
+    }
+
+    /// Returns an iterator over the elements of the [`Vector`].
+    ///
+    /// The iterator yields references to the elements of the [`Vector`] in order.
+    ///
+    pub fn iter( &self ) -> impl Iterator<Item = &T> {
+        self.0.iter()
+    }
+
+    /// Returns an iterator over mutable references to the elements of the [`Vector`].
+    ///
+    /// The iterator yields mutable references to the elements of the [`Vector`] in order.
+    ///
+    pub fn iter_mut( &mut self ) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut()
     }
 }
 
@@ -118,7 +167,7 @@ where
     T: 'static + Copy + Default + Debug
 {
     fn default() -> Self {
-        Self( [T::default(); COL] )
+        Self ( [T::default(); COL] )
     }
 }
 
@@ -127,7 +176,7 @@ where
     T: 'static + Copy + Default + Debug
 {
     fn from( src: [T; COL] ) -> Self {
-        Self( src )
+        Self ( src )
     }
 }
 
@@ -147,7 +196,20 @@ where
     T: 'static + Copy + Default + Debug
 {
     fn from( src: Tensor<T, 1, Stack<COL>> ) -> Self {
-        Self( ***src.memory() )
+        Self ( ***src.memory() )
+    }
+}
+
+impl<T, const COL: usize> From<Tensor<T, 1, Heap>> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn from( src: Tensor<T, 1, Heap> ) -> Self {
+        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
     }
 }
 
@@ -743,6 +805,98 @@ where
     fn div_assign_to( self, scalar: T, res: &mut Self::Output ) {
         self.iter().zip( res.iter_mut() )
             .for_each( |( &a, c )| *c = a / scalar );
+    }
+}
+
+impl<T, const COL: usize> InnerProduct for Vector<T, COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T>
+{
+    type Output = T;
+
+    fn inner_product( self, rhs: Self ) -> Self::Output {
+        self.iter().zip( rhs.iter() )
+            .fold( T::default(), |acc, ( &a, &b )| acc + a * b )
+    }
+}
+
+impl<T, const COL: usize> InnerProduct for &Vector<T, COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T>
+{
+    type Output = T;
+
+    fn inner_product( self, rhs: Self ) -> Self::Output {
+        self.iter().zip( rhs.iter() )
+            .fold( T::default(), |acc, ( &a, &b )| acc + a * b )
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> OuterProduct<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Matrix<T, LHS_COL, RHS_COL>;
+
+    fn outer_product( self, rhs: Vector<T, RHS_COL> ) -> Self::Output {
+        let mut res = Matrix::<T, LHS_COL, RHS_COL>::default();
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                res[[ i, j ]] = self[ i ] * rhs[ j ];
+            }
+        }
+        res
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> OuterProduct<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Matrix<T, LHS_COL, RHS_COL>;
+
+    fn outer_product( self, rhs: &Vector<T, RHS_COL> ) -> Self::Output {
+        let mut res = Matrix::<T, LHS_COL, RHS_COL>::default();
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                res[[ i, j ]] = self[ i ] * rhs[ j ];
+            }
+        }
+        res
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> OuterProductAssignTo<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Matrix<T, LHS_COL, RHS_COL>;
+
+    fn outer_product_assign_to( self, rhs: Vector<T, RHS_COL>, res: &mut Self::Output ) {
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                res[[ i, j ]] = self[ i ] * rhs[ j ];
+            }
+        }
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> OuterProductAssignTo<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Matrix<T, LHS_COL, RHS_COL>;
+
+    fn outer_product_assign_to( self, rhs: &Vector<T, RHS_COL>, res: &mut Self::Output ) {
+        for i in 0..LHS_COL {
+            for j in 0..RHS_COL {
+                res[[ i, j ]] = self[ i ] * rhs[ j ];
+            }
+        }
     }
 }
 
