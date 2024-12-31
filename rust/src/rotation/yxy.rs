@@ -17,11 +17,11 @@ use crate::{
 };
 
 #[derive( Clone, Default, Debug )]
-pub struct Rot3XYZ<T>( pub(crate) Matrix3x3<T> )
+pub struct Rot3YXY<T>( pub(crate) Matrix3x3<T> )
 where
     T: 'static + Default + Copy + Debug;
 
-impl<T> Rot3XYZ<T>
+impl<T> Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + Num + Float
 {
@@ -32,29 +32,29 @@ where
         let sψ = pitch.sin();
         let cθ = yaw.cos();
         let sθ = yaw.sin();
-        let cθcψ = cθ * cψ;
-        let cθsψ = cθ * sψ;
-        let cφsψ = cφ * sψ;
         let cφcψ = cφ * cψ;
-        let cθsφ = cθ * sφ;
-        let sφsψ = sφ * sψ;
+        let sθsφ = sθ * sφ;
+        let cφsψ = cφ * sψ;
+        let sθsψ = sθ * sψ;
+        let sθcψ = sθ * cψ;
         let sφcψ = sφ * cψ;
-        let cθcφ = cθ * cφ;
-        let sφsθ = sφ * sθ;
-        let cφsθ = cφ * sθ;
-        let sφsθcψ = sφsθ * cψ;
-        let sφsθsψ = sφsθ * sψ;
-        let cφsθcψ = cφsθ * cψ;
-        let cφsθsψ = cφsθ * sψ;
+        let sθcφ = sθ * cφ;
+        let sφsψ = sφ * sψ;
+        let sφcθ = sφ * cθ;
+        let cφcθ = cφ * cθ;
+        let sφcθsψ = sφcθ * sψ;
+        let sφcθcψ = sφcθ * cψ;
+        let cφcθsψ = cφcθ * sψ;
+        let cφcθcψ = cφcθ * cψ;
         Self ( Matrix3x3::new([
-                   cθcψ,        cθsψ,  -sθ,
-            sφsθcψ-cφsψ, sφsθsψ+cφcψ, cθsφ,
-            cφsθcψ+sφsψ, cφsθsψ-sφcψ, cθcφ
+            cφcψ-sφcθsψ,  sθsφ, -cφsψ-sφcθcψ,
+                   sθsψ,    cθ,         sθcψ,
+            sφcψ+cφcθsψ, -sθcφ, -sφsψ+cφcθcψ
         ]))
     }
 }
 
-impl<T> Deref for Rot3XYZ<T>
+impl<T> Deref for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + Num + Float
 {
@@ -67,7 +67,7 @@ where
 
 use crate::rotation::Rot3;
 
-impl<T> From<Rot3<T>> for Rot3XYZ<T>
+impl<T> From<Rot3<T>> for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + Num + Float
 {
@@ -76,7 +76,7 @@ where
     }
 }
 
-impl<T> Mul<Vector3<T>> for Rot3XYZ<T>
+impl<T> Mul<Vector3<T>> for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
 {
@@ -87,55 +87,37 @@ where
     }
 }
 
-use crate::rotation::z::Rot3Z;
+use crate::rotation::y::Rot3Y;
 
-impl<T> Mul<Rot3Z<T>> for Rot3XYZ<T>
+impl<T> Mul<Rot3Y<T>> for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
 {
     type Output = Self;
 
-    fn mul( self, rhs: Rot3Z<T> ) -> Self::Output {
+    fn mul( self, rhs: Rot3Y<T> ) -> Self::Output {
         Self( self.contract( rhs.0 ) )
     }
 }
 
-use crate::rotation::zyx::Rot3ZYX;
-
-impl<T> Transpose for Rot3XYZ<T>
+impl<T> Transpose for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
 {
-    type Output = Rot3ZYX<T>;
+    type Output = Self;
 
     fn transpose( self ) -> Self::Output {
-        Rot3ZYX( self.0.transpose() )
+        Self( self.0.transpose() )
     }
 }
 
-impl<T> TransposeAssignTo for Rot3XYZ<T>
+impl<T> TransposeAssignTo for Rot3YXY<T>
 where
     T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
 {
-    type Output = Rot3ZYX<T>;
+    type Output = Self;
 
     fn transpose_assign_to( self, res: &mut Self::Output ) {
-        *res = Rot3ZYX( self.0.transpose() );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::vector::Vector3;
-
-    #[test]
-    fn test_rot3xyz() {
-        let rot = Rot3XYZ::new( 0.0.to_radians(), 0.0.to_radians(), 45.0.to_radians() );
-        let vec = Vector3::new([ 1.0, 0.0, 0.0 ]);
-        let res = rot * vec;
-        println!( "Vec: {:?}", vec );
-        println!( "Res: {:?}", res );
-        //assert_eq!( res, Vector2::new([ 0.0, 1.0 ]) );
+        *res = Self( self.0.transpose() );
     }
 }

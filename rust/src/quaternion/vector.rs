@@ -20,7 +20,7 @@ where
 {
     pub fn new( w: T, x: T, y: T, z: T ) -> Self {
         Self (
-            Vector4::take([
+            Vector4::new([
                 w,
                 x,
                 y,

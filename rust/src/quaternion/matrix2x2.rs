@@ -20,7 +20,7 @@ where
 {
     pub fn new( w: T, x: T, y: T, z: T ) -> Self {
         Self (
-            Matrix2x2::take([
+            Matrix2x2::new([
                 Complex::new( w, x ), Complex::new( y, z ),
                 Complex::new( -y, z ), Complex::new( w, -x )
             ])

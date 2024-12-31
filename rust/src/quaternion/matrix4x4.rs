@@ -20,7 +20,7 @@ where
 {
     pub fn new( w: T, x: T, y: T, z: T ) -> Self {
         Self (
-            Matrix4x4::take([
+            Matrix4x4::new([
                 w, -x, -y, -z,
                 x,  w, -z,  y,
                 y,  z,  w, -x,

@@ -38,5 +38,5 @@ pub mod vector;
 pub mod matrix;
 pub mod polynomial;
 pub mod generalized_polynomial;
+pub mod rotation;
 //pub mod quaternion;
-//pub mod rotation;

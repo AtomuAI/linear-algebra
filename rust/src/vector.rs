@@ -15,7 +15,9 @@ use crate::{
     ops::{
         InnerProduct,
         OuterProduct,
-        OuterProductAssignTo
+        OuterProductAssignTo,
+        TensorProduct,
+        TensorProductAssignTo,
     },
     matrix::Matrix,
     shape::Shape,
@@ -181,13 +183,13 @@ where
 }
 
 #[allow(clippy::identity_op)]
-impl<T, const COL: usize> From<Matrix<T, COL, 1>> for Vector<T, COL>
+impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Vector<T, {COL * ROW}>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * 1]:
+    [(); COL * ROW]:
 {
-    fn from( src: Matrix<T, COL, 1> ) -> Self {
-        unsafe{ ::core::ptr::read( &src as *const Matrix<T, COL, 1> as *const Vector<T, COL> ) }
+    fn from( src: Matrix<T, COL, ROW> ) -> Self {
+        unsafe{ ::core::ptr::read( &src as *const Matrix<T, COL, ROW> as *const Vector<T, {COL * ROW}> ) }
     }
 }
 
@@ -897,6 +899,55 @@ where
                 res[[ i, j ]] = self[ i ] * rhs[ j ];
             }
         }
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProduct<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    Self: OuterProduct<Vector<T, RHS_COL>>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL * RHS_COL}>;
+
+    fn tensor_product( self, rhs: Vector<T, RHS_COL> ) -> Self::Output {
+        (&self).outer_product( &rhs ).into()
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProduct<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL * RHS_COL}>;
+
+    fn tensor_product( self, rhs: &Vector<T, RHS_COL> ) -> Self::Output {
+        self.outer_product( rhs ).into()
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProductAssignTo<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL * RHS_COL}>;
+
+    fn tensor_product_assign_to( self, rhs: Vector<T, RHS_COL>, res: &mut Self::Output ) {
+        (&self).outer_product_assign_to( &rhs, &mut (*res).into() );
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProductAssignTo<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    [(); LHS_COL * RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL * RHS_COL}>;
+
+    fn tensor_product_assign_to( self, rhs: &Vector<T, RHS_COL>, res: &mut Self::Output ) {
+        self.outer_product_assign_to( rhs, &mut (*res).into() );
     }
 }
 

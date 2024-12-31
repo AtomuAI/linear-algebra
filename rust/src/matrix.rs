@@ -12,6 +12,8 @@ use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
     ops::{
+        Contract,
+        ContractAssignTo,
         InnerProduct,
         InnerProductAssignTo,
         OuterProduct,
@@ -415,13 +417,13 @@ where
 }
 
 #[allow(clippy::identity_op)]
-impl<T, const COL: usize> From<Vector<T, COL>> for Matrix<T, COL, 1>
+impl<T, const COL: usize, const ROW: usize> From<Vector<T, {COL * ROW}>> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
-    [(); COL * 1]:
+    [(); COL * ROW]:
 {
-    fn from( src: Vector<T, COL> ) -> Self {
-        unsafe{ ::core::ptr::read( &src as *const Vector<T, COL> as *const Matrix<T, COL, 1> ) }
+    fn from( src: Vector<T, {COL * ROW}> ) -> Self {
+        unsafe{ ::core::ptr::read( &src as *const Vector<T, {COL * ROW}> as *const Matrix<T, COL, ROW> ) }
     }
 }
 
@@ -673,6 +675,84 @@ where
     fn div_assign( &mut self, scalar: T ) {
         self.iter_mut()
             .for_each( |a| *a /= scalar );
+    }
+}
+
+impl<T, const SHARED: usize, const LHS_ROW: usize> Contract<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); SHARED * LHS_ROW ]:,
+    [ (); SHARED ]:
+{
+    type Output = Vector<T, SHARED>;
+
+    fn contract( self, rhs: Vector<T, SHARED> ) -> Self::Output {
+        let mut result = Vector::<T, SHARED>::default();
+        for i in 0..SHARED {
+            for j in 0..LHS_ROW {
+                result[ i ] += self[[ i, j ]] * rhs[ j ];
+            }
+        }
+        result
+    }
+}
+
+impl<T, const SHARED: usize, const LHS_ROW: usize> ContractAssignTo<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); SHARED * LHS_ROW ]:,
+    [ (); SHARED ]:
+{
+    type Output = Vector<T, SHARED>;
+
+    fn contract_assign_to( self, rhs: Vector<T, SHARED>, res: &mut Self::Output ) {
+        for i in 0..SHARED {
+            for j in 0..LHS_ROW {
+                res[ i ] += self[[ i, j ]] * rhs[ j ];
+            }
+        }
+    }
+}
+
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> Contract<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); SHARED * LHS_ROW ]:,
+    [ (); RHS_COL * SHARED ]:,
+    [ (); RHS_COL * LHS_ROW ]:
+{
+    type Output = Matrix<T, RHS_COL, LHS_ROW>;
+
+    fn contract( self, rhs: Matrix<T, RHS_COL, SHARED> ) -> Self::Output {
+        let mut result = Matrix::<T, RHS_COL, LHS_ROW>::default();
+        for i in 0..LHS_ROW {
+            for j in 0..SHARED {
+                for k in 0..RHS_COL {
+                    result[[ i, k ]] += self[[ i, j ]] * rhs[[ j, k ]];
+                }
+            }
+        }
+        result
+    }
+}
+
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> ContractAssignTo<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); SHARED * LHS_ROW ]:,
+    [ (); RHS_COL * SHARED ]:,
+    [ (); RHS_COL * LHS_ROW ]:
+{
+    type Output = Matrix<T, RHS_COL, LHS_ROW>;
+
+    fn contract_assign_to( self, rhs: Matrix<T, RHS_COL, SHARED>, res: &mut Self::Output ) {
+        for i in 0..LHS_ROW {
+            for j in 0..SHARED {
+                for k in 0..RHS_COL {
+                    res[[ i, k ]] += self[[ i, j ]] * rhs[[ j, k ]];
+                }
+            }
+        }
     }
 }
 

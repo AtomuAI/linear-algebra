@@ -82,3 +82,23 @@ pub trait TransposeAssignTo {
     ///
     fn transpose_assign_to( self, res: &mut Self::Output );
 }
+
+/// The tensor (kronecker) product operator.
+///
+pub trait TensorProduct<Rhs = Self> {
+    type Output;
+
+    /// Performs the outer product operation.
+    ///
+    fn tensor_product( self, rhs: Rhs ) -> Self::Output;
+}
+
+/// The tensor (kronecker) product assign to operator.
+///
+pub trait TensorProductAssignTo<Rhs = Self> {
+    type Output;
+
+    /// Performs the outer product assign to operation.
+    ///
+    fn tensor_product_assign_to( self, rhs: Rhs, res: &mut Self::Output );
+}
