@@ -20,7 +20,9 @@ use crate::{
         OuterProductAssignTo,
         Transpose,
         TransposeAssign,
-        TransposeAssignTo
+        TransposeAssignTo,
+        KroneckerProduct,
+        KroneckerProductAssignTo
     },
     vector::Vector,
     shape::Shape,
@@ -1045,6 +1047,76 @@ where
         }
     }
 }
+
+/*
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> KroneckerProduct<Matrix<T, RHS_COL, RHS_ROW>> for Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    Self: OuterProduct<Matrix<T, RHS_COL, RHS_ROW>>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL]:,
+    [(); LHS_ROW * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:,
+{
+    type Output = Matrix<T, {LHS_COL * RHS_COL}, {LHS_ROW * RHS_ROW}>;
+
+    fn kronecker_product( self, rhs: Matrix<T, RHS_COL, RHS_ROW> ) -> Self::Output {
+        (&self).outer_product( &rhs ).into()
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> KroneckerProduct<&Matrix<T, RHS_COL, RHS_ROW>> for &Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    Self: OuterProduct<Matrix<T, RHS_COL, RHS_ROW>>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL]:,
+    [(); LHS_ROW * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:,
+{
+    type Output = Matrix<T, {LHS_COL * RHS_COL}, {LHS_ROW * RHS_ROW}>;
+
+    fn kronecker_product( self, rhs: &Matrix<T, RHS_COL, RHS_ROW> ) -> Self::Output {
+        self.outer_product( rhs ).into()
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> KroneckerProductAssignTo<Matrix<T, RHS_COL, RHS_ROW>> for Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    Self: OuterProduct<Matrix<T, RHS_COL, RHS_ROW>>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL]:,
+    [(); LHS_ROW * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:,
+{
+    type Output = Matrix<T, {LHS_COL * RHS_COL}, {LHS_ROW * RHS_ROW}>;
+
+    fn kronecker_product_assign_to( self, rhs: Matrix<T, RHS_COL, RHS_ROW>, res: &mut Self::Output ) {
+        (&self).outer_product_assign_to( &rhs, &mut (*res).into() );
+    }
+}
+
+impl<T, const LHS_COL: usize, const LHS_ROW: usize, const RHS_COL: usize, const RHS_ROW: usize> KroneckerProductAssignTo<&Matrix<T, RHS_COL, RHS_ROW>> for &Matrix<T, LHS_COL, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T>,
+    Self: OuterProduct<Matrix<T, RHS_COL, RHS_ROW>>,
+    [(); LHS_COL * LHS_ROW]:,
+    [(); RHS_COL * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL]:,
+    [(); LHS_ROW * RHS_ROW]:,
+    [(); LHS_COL * RHS_COL * LHS_ROW * RHS_ROW]:,
+{
+    type Output = Matrix<T, {LHS_COL * RHS_COL}, {LHS_ROW * RHS_ROW}>;
+
+    fn kronecker_product_assign_to( self, rhs: &Matrix<T, RHS_COL, RHS_ROW>, res: &mut Self::Output ) {
+        self.outer_product_assign_to( rhs, &mut (*res).into() );
+    }
+}
+*/
 
 pub type Matrix2x2<T> = Matrix<T, 2, 2>;
 pub type Matrix2x3<T> = Matrix<T, 2, 3>;

@@ -9,5 +9,6 @@ path = "src/lib.rs"
 [dependencies]
 thiserror = "2.0.6"
 num = "0.4.3"
+const-expr-bounds = { path = "../../const-expr-bounds/rust" }
 memory = { path = "../../memory/rust" }
 arithmetic = { path = "../../arithmetic/rust" }

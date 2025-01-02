@@ -1,3 +1,39 @@
+use std::process::Output;
+
+
+/// The append operator.
+///
+pub trait Append<Rhs = Self> {
+    type Output;
+
+    fn append( self, rhs: Rhs ) -> Self::Output;
+}
+
+/// The append assign to operator.
+///
+pub trait AppendAssignTo<Rhs = Self> {
+    type Output;
+
+    fn append_assign_to( self, rhs: Rhs, res: &mut Self::Output );
+}
+
+/// The split operator.
+///
+pub trait Split<const A_SIZE: usize, const B_SIZE: usize> {
+    type OutputA;
+    type OutputB;
+
+    fn split( self ) -> ( Self::OutputA, Self::OutputB );
+}
+
+/// The split assign to operator.
+///
+pub trait SplitAssignTo<const A_SIZE: usize, const B_SIZE: usize> {
+    type OutputA;
+    type OutputB;
+
+    fn split_assign_to( self, res_a: &mut Self::OutputA, res_b: &mut Self::OutputB );
+}
 
 /// The contraction operator.
 ///
@@ -83,22 +119,42 @@ pub trait TransposeAssignTo {
     fn transpose_assign_to( self, res: &mut Self::Output );
 }
 
-/// The tensor (kronecker) product operator.
+/// The tensor product operator.
 ///
 pub trait TensorProduct<Rhs = Self> {
     type Output;
 
-    /// Performs the outer product operation.
+    /// Performs the tensor product operation.
     ///
     fn tensor_product( self, rhs: Rhs ) -> Self::Output;
 }
 
-/// The tensor (kronecker) product assign to operator.
+/// The tensor product assign to operator.
 ///
 pub trait TensorProductAssignTo<Rhs = Self> {
     type Output;
 
-    /// Performs the outer product assign to operation.
+    /// Performs the tensor product assign to operation.
     ///
     fn tensor_product_assign_to( self, rhs: Rhs, res: &mut Self::Output );
+}
+
+/// The kronecker product operator.
+///
+pub trait KroneckerProduct<Rhs = Self> {
+    type Output;
+
+    /// Performs the kronecker product operation.
+    ///
+    fn kronecker_product( self, rhs: Rhs ) -> Self::Output;
+}
+
+/// The kronecker product assign to operator.
+///
+pub trait KroneckerProductAssignTo<Rhs = Self> {
+    type Output;
+
+    /// Performs the kronecker product assign to operation.
+    ///
+    fn kronecker_product_assign_to( self, rhs: Rhs, res: &mut Self::Output );
 }

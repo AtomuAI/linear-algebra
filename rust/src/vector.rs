@@ -13,6 +13,10 @@ use arithmetic::{ AddAssignTo, SubAssignTo, MulAssignTo, DivAssignTo };
 
 use crate::{
     ops::{
+        Append,
+        AppendAssignTo,
+        Split,
+        SplitAssignTo,
         InnerProduct,
         OuterProduct,
         OuterProductAssignTo,
@@ -224,56 +228,56 @@ where
     }
 }
 
-impl<T, const COL: usize> Add for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> Add<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Add<Output = T>,
     Self: Clone
 {
     type Output = Self;
 
-    fn add( mut self, other: Self ) -> Self::Output {
+    fn add( mut self, other: Vector<T, RHS_COL> ) -> Self::Output {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a = *a + b );
         self
     }
 }
 
-impl<T, const COL: usize> Sub for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> Sub<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
     Self: Clone
 {
     type Output = Self;
 
-    fn sub( mut self, other: Self ) -> Self::Output {
+    fn sub( mut self, other: Vector<T, RHS_COL> ) -> Self::Output {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a = *a - b );
         self
     }
 }
 
-impl<T, const COL: usize> Mul for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> Mul<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     Self: Clone
 {
     type Output = Self;
 
-    fn mul( mut self, other: Self ) -> Self::Output {
+    fn mul( mut self, other: Vector<T, RHS_COL> ) -> Self::Output {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a = *a * b );
         self
     }
 }
 
-impl<T, const COL: usize> Div for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> Div<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Div<Output = T>,
     Self: Clone
 {
     type Output = Self;
 
-    fn div( mut self, other: Self ) -> Self::Output {
+    fn div( mut self, other: Vector<T, RHS_COL> ) -> Self::Output {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a = *a / b );
         self
@@ -336,41 +340,41 @@ where
     }
 }
 
-impl<T, const COL: usize> AddAssign for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> AddAssign<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + AddAssign,
 {
-    fn add_assign( &mut self, other: Self ) {
+    fn add_assign( &mut self, other: Vector<T, RHS_COL> ) {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a += b );
     }
 }
 
-impl<T, const COL: usize> SubAssign for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> SubAssign<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + SubAssign,
 {
-    fn sub_assign( &mut self, other: Self ) {
+    fn sub_assign( &mut self, other: Vector<T, RHS_COL> ) {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a -= b );
     }
 }
 
-impl<T, const COL: usize> MulAssign for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> MulAssign<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + MulAssign,
 {
-    fn mul_assign( &mut self, other: Self ) {
+    fn mul_assign( &mut self, other: Vector<T, RHS_COL> ) {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a *= b );
     }
 }
 
-impl<T, const COL: usize> DivAssign for Vector<T, COL>
+impl<T, const LHS_COL: usize, const RHS_COL: usize> DivAssign<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + DivAssign,
 {
-    fn div_assign( &mut self, other: Self ) {
+    fn div_assign( &mut self, other: Vector<T, RHS_COL> ) {
         self.iter_mut().zip( other.iter() )
             .for_each( |( a, &b )| *a /= b );
     }
@@ -711,6 +715,73 @@ where
     fn div_assign( &mut self, scalar: T ) {
         self.iter_mut()
             .for_each( |a| *a /= scalar );
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> Append<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug,
+    [(); LHS_COL + RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL + RHS_COL}>;
+
+    fn append( self, other: Vector<T, RHS_COL> ) -> Self::Output {
+        let mut result = Vector::<T, {LHS_COL + RHS_COL}>::default();
+        self.iter().chain( other.iter() ).zip( result.iter_mut() )
+            .for_each( |( &value, result_value )| *result_value = value );
+        result
+    }
+}
+
+impl<T, const LHS_COL: usize, const RHS_COL: usize> AppendAssignTo<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
+where
+    T: Default + Copy + Debug,
+    [(); LHS_COL + RHS_COL]:
+{
+    type Output = Vector<T, {LHS_COL + RHS_COL}>;
+
+    fn append_assign_to( self, rhs: Vector<T, RHS_COL>, res: &mut Self::Output ) {
+        self.iter().chain( rhs.iter() ).zip( res.iter_mut() )
+            .for_each( |( &value, result_value )| *result_value = value );
+    }
+}
+
+impl<T, const A_COL: usize, const B_COL: usize> Split<A_COL, B_COL> for Vector<T, {A_COL + B_COL}>
+where
+    T: Default + Copy + Debug,
+    [(); A_COL + B_COL]:,
+    [(); A_COL]:,
+    [(); B_COL]:
+{
+    type OutputA = Vector<T, A_COL>;
+    type OutputB = Vector<T, B_COL>;
+
+    fn split( self ) -> ( Self::OutputA, Self::OutputB ) {
+        let mut a = Vector::<T, A_COL>::default();
+        let mut b = Vector::<T, B_COL>::default();
+        self.iter().take( A_COL ).zip( a.iter_mut() )
+            .for_each( |( &value, a_value )| *a_value = value );
+        self.iter().skip( A_COL ).zip( b.iter_mut() )
+            .for_each( |( &value, b_value )| *b_value = value );
+        ( a, b )
+    }
+}
+
+impl<T, const A_COL: usize, const B_COL: usize> SplitAssignTo<A_COL, B_COL> for Vector<T, {A_COL + B_COL}>
+where
+    T: Default + Copy + Debug,
+    [(); A_COL + B_COL]:,
+    [(); A_COL]:,
+    [(); B_COL]:
+{
+    type OutputA = Vector<T, A_COL>;
+    type OutputB = Vector<T, B_COL>;
+
+    fn split_assign_to( self, res_a: &mut Self::OutputA, res_b: &mut Self::OutputB ) {
+        self.iter().take( A_COL ).zip( res_a.iter_mut() )
+            .for_each( |( &value, a_value )| *a_value = value );
+        self.iter().skip( A_COL ).zip( res_b.iter_mut() )
+            .for_each( |( &value, b_value )| *b_value = value );
     }
 }
 
@@ -1067,5 +1138,31 @@ mod tests {
 
         println!( "{:?} = <{:?}, {:?}>", c, a, b );
         assert_eq!( c, 11.0 );
+    }
+
+    #[test]
+    fn append_test() {
+        let a = Vector2::<f32>::from([
+            1.0, 2.0
+        ]);
+
+        let b = Vector3::<f32>::from([
+            3.0, 4.0, 5.0
+        ]);
+
+        let c = a.append( b );
+
+        println!( "{:?} = <{:?}, {:?}>", c, a, b );
+    }
+
+    #[test]
+    fn split_test() {
+        let a = Vector5::<f32>::from([
+            1.0, 2.0, 3.0, 4.0, 5.0
+        ]);
+
+        let ( b, c ): ( Vector3<f32>, Vector2<f32> ) = a.split();
+
+        println!( "<{:?}, {:?}> = {:?}", b, c, a );
     }
 }

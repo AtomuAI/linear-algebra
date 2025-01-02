@@ -462,11 +462,11 @@ where
     Memory<T, Stack<CAP>>: MemoryTraits<Type = T, New = [T; CAP]>,
     Self: Default + Clone + TensorTraits<T, 2, Heap>,
 {
-    fn from(src: Tensor<T, ORD, Stack<CAP>>) -> Self {
+    fn from( src: Tensor<T, ORD, Stack<CAP>> ) -> Self {
         if src.shape().vol() != CAP { panic!("Mismatched size"); }
         let mut this = Self::default();
-        this.iter_mut().zip(src.iter())
-            .for_each(|(a, &b)| *a = b);
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
         this
     }
 }
@@ -478,14 +478,33 @@ where
     Memory<T, Stack<CAP>>: MemoryTraits<Type = T, New = [T; CAP]>,
     Self: Default + Clone + TensorTraits<T, 2, Stack<CAP>>,
 {
-    fn from(src: Tensor<T, ORD, Heap>) -> Self {
+    fn from( src: Tensor<T, ORD, Heap> ) -> Self {
         if src.shape().vol() != CAP { panic!("Mismatched size"); }
         let mut this = Self::default();
-        this.iter_mut().zip(src.iter())
-            .for_each(|(a, &b)| *a = b);
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
         this
     }
 }
+
+/*
+impl<T, const ORD: usize, M> From<Tensor<T, { ORD - 1 }, M>> for Tensor<T, ORD, M>
+where
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Default + Clone + Sized + TensorTraits<T, ORD, M>,
+    Tensor<T, { ORD - 1 }, M>: Default + Clone + Sized + TensorTraits<T, { ORD - 1 }, M>,
+    [(); ORD - 1]:
+{
+    fn from( src: Tensor<T, { ORD - 1 }, M> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src.memory()
+        )
+    }
+}
+    */
 
 impl<T, const ORD: usize, M> Add for Tensor<T, ORD, M>
 where

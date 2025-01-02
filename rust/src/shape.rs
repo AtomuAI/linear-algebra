@@ -4,6 +4,8 @@
 
 use std::ops::{ Deref, DerefMut };
 
+use const_expr_bounds::{ Assert, IsTrue, IsFalse };
+
 #[derive( Debug )]
 pub enum Error {
     MismatchedSizes,
@@ -61,7 +63,21 @@ impl<const N: usize> DerefMut for Shape<N> {
 }
 
 impl<const N: usize> From<[usize; N]> for Shape<N> {
-    fn from( slice: [usize; N] ) -> Self {
-        Self ( slice )
+    fn from( src: [usize; N] ) -> Self {
+        Self ( src )
     }
 }
+
+/*
+impl<const LHS_N: usize> From<Shape<{LHS_N - 1}>> for Shape<LHS_N>
+where
+    Assert<{LHS_N - 1 > 0}>: IsTrue,
+    [(); LHS_N - 1]:
+{
+    fn from( src: Shape<{LHS_N - 1}> ) -> Self {
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() ).for_each( |( a, b )| *a = *b );
+        this
+    }
+}
+    */
