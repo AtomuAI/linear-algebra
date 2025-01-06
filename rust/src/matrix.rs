@@ -200,7 +200,7 @@ where
     ///
     /// The iterator yields references to the elements of the [`Matrix`] in order.
     ///
-    pub fn iter( &self ) -> impl Iterator<Item = &T> {
+    pub fn iter_row_wise( &self ) -> impl Iterator<Item = &T> {
         self.0.iter()
     }
 
@@ -208,9 +208,34 @@ where
     ///
     /// The iterator yields mutable references to the elements of the [`Matrix`] in order.
     ///
-    pub fn iter_mut( &mut self ) -> impl Iterator<Item = &mut T> {
+    pub fn iter_row_wise_mut( &mut self ) -> impl Iterator<Item = &mut T> {
         self.0.iter_mut()
     }
+
+    /// Returns an iterator over the elements of the [`Matrix`].
+    ///
+    /// The iterator yields references to the elements of the [`Matrix`] in order.
+    ///
+    pub fn iter_col_wise( &self ) -> impl Iterator<Item = &T> {
+        ( 0..COL ).flat_map( move |col| {
+            ( 0..ROW ).map( move |row| {
+                &self[[ col, row ]]
+            })
+        })
+    }
+
+    /// Returns an iterator over mutable references to the elements of the [`Matrix`].
+    ///
+    /// The iterator yields mutable references to the elements of the [`Matrix`] in order.
+    ///
+    pub fn iter_col_wise_mut( &mut self ) -> impl Iterator<Item = &mut T> {
+            let self_ptr = self as *mut Self;
+            ( 0..COL ).flat_map( move |col| {
+                ( 0..ROW ).map( move |row| unsafe {
+                    &mut (*self_ptr)[[ col, row ]]
+                })
+            })
+        }
 
     /// Returns an iterator over the elements of the [`Matrix`] by row.
     ///
@@ -277,6 +302,22 @@ where
             let matrix_ptr = self.0.as_mut_ptr();
             ( 0..ROW ).map( move |row| unsafe { &mut *matrix_ptr.add( Self::idx( col, row ) ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
         })
+    }
+
+    pub fn iter_dim<const DIM: usize>(&self) -> impl Iterator<Item = &T> {
+        match DIM {
+            0 => self.iter_rows().flatten(),
+            1 => self.iter_cols().flatten(),
+            _ => panic!("Invalid dimension: DIM must be 0 (row-wise) or 1 (column-wise)"),
+        }
+    }
+
+    pub fn iter_dim_mut<const DIM: usize>(&mut self) -> impl Iterator<Item = &mut T> {
+        match DIM {
+            0 => self.iter_rows_mut().flatten(),
+            1 => self.iter_cols_mut().flatten(),
+            _ => panic!("Invalid dimension: DIM must be 0 (row-wise) or 1 (column-wise)"),
+        }
     }
 }
 
@@ -680,7 +721,7 @@ where
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize> Contract<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize> Contract<2, 1, Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -688,18 +729,14 @@ where
 {
     type Output = Vector<T, SHARED>;
 
-    fn contract( self, rhs: Vector<T, SHARED> ) -> Self::Output {
+    fn contract( self, lhs_dims: [usize; 2], rhs_dims: [usize; 1], rhs: Vector<T, SHARED> ) -> Self::Output {
         let mut result = Vector::<T, SHARED>::default();
-        for i in 0..SHARED {
-            for j in 0..LHS_ROW {
-                result[ i ] += self[[ i, j ]] * rhs[ j ];
-            }
-        }
+        self.iter
         result
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize> ContractAssignTo<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize> ContractAssignTo<2, Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -716,7 +753,7 @@ where
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> Contract<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> Contract<2, Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -724,6 +761,8 @@ where
     [ (); RHS_COL * LHS_ROW ]:
 {
     type Output = Matrix<T, RHS_COL, LHS_ROW>;
+    const LHS: [usize; 2] = [ 1, 1 ];
+    const RHS: [usize; 2] = [ 1, 1 ];
 
     fn contract( self, rhs: Matrix<T, RHS_COL, SHARED> ) -> Self::Output {
         let mut result = Matrix::<T, RHS_COL, LHS_ROW>::default();
@@ -738,7 +777,7 @@ where
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> ContractAssignTo<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> ContractAssignTo<2, Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -746,6 +785,8 @@ where
     [ (); RHS_COL * LHS_ROW ]:
 {
     type Output = Matrix<T, RHS_COL, LHS_ROW>;
+    const LHS: [usize; 2] = [ 1, 1 ];
+    const RHS: [usize; 2] = [ 1, 1 ];
 
     fn contract_assign_to( self, rhs: Matrix<T, RHS_COL, SHARED>, res: &mut Self::Output ) {
         for i in 0..LHS_ROW {

@@ -325,7 +325,7 @@ where
 }
 */
 
-pub fn contract<T, const D: usize, const E: usize, const F: usize, M, N, O>(
+pub fn contract<T, const D: usize, const E: usize, const F: usize, const G: usize, const H: usize, M, N, O, const CONTRACT_DIMS_A: [usize; G], const CONTRACT_DIMS_B: [usize; H]>(
     a: &Tensor<T, D, M>,
     b: &Tensor<T, E, N>,
     c: &mut Tensor<T, F, O>,

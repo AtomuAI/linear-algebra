@@ -32,23 +32,23 @@ pub trait SplitAssignTo<const A_SIZE: usize, const B_SIZE: usize> {
     type OutputA;
     type OutputB;
 
-    fn split_assign_to( self, res_a: &mut Self::OutputA, res_b: &mut Self::OutputB );
+    fn split_assign_to( self, res: ( &mut Self::OutputA, &mut Self::OutputB ) );
 }
 
 /// The contraction operator.
 ///
-pub trait Contract<Rhs = Self> {
+pub trait Contract<const LHS_ORD: usize, const RHS_ORD: usize, Rhs = Self> {
     type Output;
 
-    fn contract( self, rhs: Rhs ) -> Self::Output;
+    fn contract( self, lhs_dims: [usize; LHS_ORD], rhs_dims: [usize; RHS_ORD], rhs: Rhs ) -> Self::Output;
 }
 
 /// The contraction assign to operator.
 ///
-pub trait ContractAssignTo<Rhs = Self> {
+pub trait ContractAssignTo<const LHS_ORD: usize, const RHS_ORD: usize, Rhs = Self> {
     type Output;
 
-    fn contract_assign_to( self, rhs: Rhs, res: &mut Self::Output );
+    fn contract_assign_to( self, lhs_dims: [usize; LHS_ORD], rhs_dims: [usize; RHS_ORD], rhs: Rhs, res: &mut Self::Output );
 }
 
 /// The inner product operator.
