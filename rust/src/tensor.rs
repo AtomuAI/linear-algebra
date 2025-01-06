@@ -4,12 +4,25 @@
 
 use std::{
     fmt::Debug,
-    ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
+    ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign },
+    marker::PhantomData
 };
+use num::traits::Num;
 
 use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
+use crate::vector::Vector;
+use crate::matrix::Matrix;
 
 use crate::{
+    ops::{
+        InnerProduct,
+        InnerProductAssignTo,
+        OuterProduct,
+        OuterProductAssignTo,
+        Transpose,
+        TransposeAssign,
+        TransposeAssignTo
+    },
     shape::Shape,
     //slice::Slice
 };
@@ -20,25 +33,27 @@ pub enum Error {
     MismatchedShapes,
 }
 
+/// A tensor type of generic element, order and storage type.
+///
 #[ derive( Clone, Debug ) ]
-pub struct Tensor<T, const DIM: usize, M>
+pub struct Tensor<T, const ORD: usize, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>
 {
-    shape: Shape<DIM>,
+    shape: Shape<ORD>,
     memory: Memory<T, M>
 }
 
-impl<T, const DIM: usize, M> Copy for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Copy for Tensor<T, ORD, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType + Clone,
     Memory<T, M>: MemoryTraits<Type = T> + Copy
 {}
 
-impl<T, const DIM: usize, M> Default for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Default for Tensor<T, ORD, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType,
@@ -53,7 +68,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> PartialEq for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> PartialEq for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + PartialEq,
     M: MemoryType,
@@ -66,44 +81,61 @@ where
 }
 
 #[allow(clippy::needless_lifetimes)]
-trait TensorAccess<T, const DIM: usize, M>
+pub(crate) trait TensorAccess<T, const ORD: usize, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>,
     Self: Sized
 {
-    fn _shape<'a>( &'a self ) -> &'a Shape<DIM>;
+    fn _shape<'a>( &'a self ) -> &'a Shape<ORD>;
     fn memory<'a>( &'a self ) -> &'a Memory<T, M>;
-    fn shape_mut<'b>( &'b mut self ) -> &'b mut Shape<DIM>;
+    fn shape_mut<'b>( &'b mut self ) -> &'b mut Shape<ORD>;
     fn memory_mut<'b>( &'b mut self ) -> &'b mut Memory<T, M>;
 }
 
-pub trait TensorTraits<T, const DIM: usize, M>: TensorAccess<T, DIM, M>
+pub trait TensorTraits<T, const ORD: usize, M>: TensorAccess<T, ORD, M>
 where
     T: 'static + Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>,
     Self: Sized
 {
-    fn new( shape: Shape<DIM> ) -> Self;
-    fn take( shape: Shape<DIM>, src: <Memory<T, M> as MemoryTraits>::Take ) -> Self;
+    /// Creates a new [`Tensor`] of some order with a given shape and memory.
+    ///
+    fn new( shape: Shape<ORD>, src: <Memory<T, M> as MemoryTraits>::New ) -> Self;
 
-    fn dim( &self ) -> usize {
-        self._shape().dim()
+    /// Creates a new zero filled [`Tensor`].
+    ///
+    fn zero( shape: Shape<ORD> ) -> Self;
+
+    /// Creates a new identity (diagonally) filled [`Tensor`].
+    ///
+    fn eye( shape: Shape<ORD> ) -> Self where T: Num;
+
+    /// Get the order of the [`Tensor`].
+    ///
+    fn ord( &self ) -> usize {
+        self._shape().ord()
     }
 
+    /// Get the total size of the [`Tensor`].
+    ///
     fn size( &self ) -> usize {
         self.memory().len()
     }
 
-    fn shape( &self ) -> &Shape<DIM> {
+    /// Get the shape of the [`Tensor`].
+    ///
+    fn shape( &self ) -> &Shape<ORD> {
         self._shape()
     }
 
-    //fn slice<'a>( &'a mut self, start: Shape<DIM>, end: Shape<DIM>, strides: Shape<DIM> ) -> Slice<'a, T, S, M>;
+    //fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, S, M>;
 
-    fn reshape( &mut self, shape: Shape<DIM> ) -> Result<(), Error> {
+    /// Reshape the [`Tensor`] to a new shape.
+    ///
+    fn reshape( &mut self, shape: Shape<ORD> ) -> Result<(), Error> {
         match shape.vol() == self.memory().len() {
             false => Err( Error::MismatchedSizes ),
             true => {
@@ -113,37 +145,34 @@ where
         }
     }
 
+    /// Fill the [`Tensor`] with a given value.
+    ///
     fn fill( &mut self, value: T ) {
         for i in 0..self.memory().len() {
             self.memory_mut()[ i ] = value;
         }
     }
 
-    fn zero( &mut self ) {
+    /// Clear the [`Tensor`].
+    fn clear( &mut self ) {
         self.fill( T::default() );
     }
 
-    fn identity( &mut self, value: T ) {
-        for i in 0..self.memory().len() {
-            if i % ( self.shape()[ 0 ] + 1 ) == 0 {
-                self.memory_mut()[ i ] = value;
-            } else {
-                self.memory_mut()[ i ] = T::default();
-            }
-        }
-    }
-
-    fn flat_idx( &self, index: &[usize; DIM] ) -> usize {
-        let dim = self.shape().dim();
-        let mut flat_idx = 0;
+    /// Get the flat index of a multi-dimensional index.
+    ///
+    fn idx( &self, index: &[usize; ORD] ) -> usize {
+        let dim = self.shape().ord();
+        let mut idx = 0;
         let mut stride = 1;
         for ( i, &dim_index ) in index.iter().rev().enumerate() {
-            flat_idx += dim_index * stride;
+            idx += dim_index * stride;
             stride *= self.shape()[ dim - 1 - i ];
         }
-        flat_idx
+        idx
     }
 
+    /// Returns an iterator over the [`Tensor`].
+    ///
     fn iter<'a>( &'a self ) -> std::slice::Iter<'a, T>
     where
         M: 'a
@@ -151,6 +180,8 @@ where
         self.memory().iter()
     }
 
+    /// Returns a mutable iterator over the [`Tensor`].
+    ///
     fn iter_mut<'a>( &'a mut self ) -> std::slice::IterMut<'a, T>
     where
         M: 'a
@@ -160,14 +191,14 @@ where
 }
 
 #[allow(clippy::needless_lifetimes)]
-impl<T, const DIM: usize, M> TensorAccess<T, DIM, M> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> TensorAccess<T, ORD, M> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>
 {
     #[inline(always)]
-    fn _shape<'a>( &'a self ) -> &'a Shape<DIM> {
+    fn _shape<'a>( &'a self ) -> &'a Shape<ORD> {
         &self.shape
     }
 
@@ -177,7 +208,7 @@ where
     }
 
     #[inline(always)]
-    fn shape_mut<'b>( &'b mut self ) -> &'b mut Shape<DIM> {
+    fn shape_mut<'b>( &'b mut self ) -> &'b mut Shape<ORD> {
         &mut self.shape
     }
 
@@ -187,54 +218,75 @@ where
     }
 }
 
-impl<T, const DIM: usize, const N: usize> TensorTraits<T, DIM, Stack<N>> for Tensor<T, DIM, Stack<N>>
+impl<T, const ORD: usize, const N: usize> TensorTraits<T, ORD, Stack<N>> for Tensor<T, ORD, Stack<N>>
 where
     T: Default + Clone + Copy + Debug,
-    Memory<T, Stack<N>>: MemoryTraits<Type = T, New = (), Take = [T; N]>,
+    Memory<T, Stack<N>>: MemoryTraits<Type = T, New = [T; N]>,
 {
-    fn new( shape: Shape<DIM> ) -> Self {
-        Self {
-            shape,
-            memory: Memory::<T, Stack<N>>::new( () )
-        }
-    }
-
-    fn take( shape: Shape<DIM>, memory: [T; N] ) -> Self {
+    fn new( shape: Shape<ORD>, memory: [T; N] ) -> Self {
         if shape.vol() != N { panic!( "Mismatched sizes" ); }
         Self {
             shape,
-            memory: Memory::<T, Stack<N>>::take( memory )
+            memory: Memory::<T, Stack<N>>::new( memory )
         }
+    }
+
+    fn zero( shape: Shape<ORD> ) -> Self {
+        Self::new( shape, [T::default(); N] )
+    }
+
+    fn eye( shape: Shape<ORD> ) -> Self
+    where
+        T: Num
+    {
+        let mut memory = [ T::default(); N ];
+        let mut stride = 0;
+        for ( i, elem ) in memory.iter_mut().enumerate() {
+            if i == stride {
+                *elem = T::one();
+                stride += shape[ 0 ] + 1;
+            }
+        }
+        Self::new( shape, memory )
     }
 }
 
-impl<T, const DIM: usize> TensorTraits<T, DIM, Heap> for Tensor<T, DIM, Heap>
+impl<T, const ORD: usize> TensorTraits<T, ORD, Heap> for Tensor<T, ORD, Heap>
 where
     T: Default + Clone + Copy + Debug,
-    Memory<T, Heap>: MemoryTraits<Type = T, New = usize, Take = Vec<T>>,
+    Memory<T, Heap>: MemoryTraits<Type = T, New = Vec<T>>,
 {
-    fn new( shape: Shape<DIM> ) -> Self {
-        let vol = shape.vol();
-        let mut memory = Memory::<T, Heap>::new( vol );
-        memory.resize( vol, T::default() );
-        Self {
-            shape,
-            memory
-        }
-    }
-
-    fn take( shape: Shape<DIM>, memory: Vec<T> ) -> Self {
+    fn new( shape: Shape<ORD>, memory: Vec<T> ) -> Self {
         if shape.vol() != memory.len() { panic!( "Mismatched sizes" ); }
         Self {
             shape,
-            memory: Memory::<T, Heap>::take( memory )
+            memory: Memory::<T, Heap>::new( memory )
         }
+    }
+
+    fn zero( shape: Shape<ORD> ) -> Self {
+        Self::new( shape, vec![ T::default(); shape.vol() ] )
+    }
+
+    fn eye( shape: Shape<ORD> ) -> Self
+    where
+        T: Num
+    {
+        let mut memory = vec![ T::default(); shape.vol() ];
+        let mut stride = 0;
+        for ( i, elem ) in memory.iter_mut().enumerate() {
+            if i == stride {
+                *elem = T::one();
+                stride += shape[ 0 ] + 1;
+            }
+        }
+        Self::new( shape, memory )
     }
 }
 
 /*
-pub fn product<T, const DIM: usize, const E: usize, const F: usize, M, N, O>(
-    a: &Tensor<T, DIM, M>,
+pub fn product<T, const ORD: usize, const E: usize, const F: usize, M, N, O>(
+    a: &Tensor<T, ORD, M>,
     b: &Tensor<T, E, N>,
     c: &mut Tensor<T, F, O>
 )
@@ -243,7 +295,7 @@ where
     M: MemoryType,
     N: MemoryType,
     O: MemoryType,
-    Tensor<T, DIM, M>: TensorTraits<T, DIM, M>,
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>,
     Tensor<T, E, N>: TensorTraits<T, E, N>,
     Tensor<T, F, O>: TensorTraits<T, F, O>,
     Memory<T, M>: MemoryTraits<Type = T>,
@@ -340,7 +392,121 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Add for Tensor<T, DIM, M>
+impl<T, const COL: usize> From<Vector<T, COL>> for Tensor<T, 1, Stack<COL>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<COL>>: MemoryTraits<Type = T, New = [T; COL]>,
+    Self: Clone + TensorTraits<T, 1, Stack<COL>>
+{
+    fn from( src: Vector<T, COL> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src
+        )
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Tensor<T, 2, Stack<{COL * ROW}>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<{COL * ROW}>>: MemoryTraits<Type = T, New = [T; COL * ROW]>,
+    Self: Clone + TensorTraits<T, 2, Stack<{COL * ROW}>>,
+    [(); COL * ROW]:
+{
+    fn from( src: Matrix<T, COL, ROW> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src
+        )
+    }
+}
+
+// TODO: Should be TryFrom
+impl<T, const COL: usize> From<Vector<T, COL>> for Tensor<T, 1, Heap>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<COL>>: MemoryTraits<Type = T, New = [T; COL]>,
+    Self: Clone + TensorTraits<T, 1, Stack<COL>>
+{
+    fn from( src: Vector<T, COL> ) -> Self {
+        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
+    }
+}
+
+// TODO: Should be TryFrom
+impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Tensor<T, 2, Heap>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<{COL * ROW}>>: MemoryTraits<Type = T, New = [T; COL * ROW]>,
+    Self: Clone + TensorTraits<T, 2, Stack<{COL * ROW}>>,
+    [(); COL * ROW]:
+{
+    fn from( src: Matrix<T, COL, ROW> ) -> Self {
+        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
+        if src.shape()[1] != ROW { panic!( "Mismatched row length" ); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
+    }
+}
+
+// TODO: Should be TryFrom
+impl<T, const ORD: usize, const CAP: usize> From<Tensor<T, ORD, Stack<CAP>>> for Tensor<T, ORD, Heap>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<CAP>>: MemoryTraits<Type = T, New = [T; CAP]>,
+    Self: Default + Clone + TensorTraits<T, 2, Heap>,
+{
+    fn from( src: Tensor<T, ORD, Stack<CAP>> ) -> Self {
+        if src.shape().vol() != CAP { panic!("Mismatched size"); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
+    }
+}
+
+// TODO: Should be TryFrom
+impl<T, const ORD: usize, const CAP: usize> From<Tensor<T, ORD, Heap>> for Tensor<T, ORD, Stack<CAP>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<CAP>>: MemoryTraits<Type = T, New = [T; CAP]>,
+    Self: Default + Clone + TensorTraits<T, 2, Stack<CAP>>,
+{
+    fn from( src: Tensor<T, ORD, Heap> ) -> Self {
+        if src.shape().vol() != CAP { panic!("Mismatched size"); }
+        let mut this = Self::default();
+        this.iter_mut().zip( src.iter() )
+            .for_each( |( a, &b )| *a = b );
+        this
+    }
+}
+
+/*
+impl<T, const ORD: usize, M> From<Tensor<T, { ORD - 1 }, M>> for Tensor<T, ORD, M>
+where
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Default + Clone + Sized + TensorTraits<T, ORD, M>,
+    Tensor<T, { ORD - 1 }, M>: Default + Clone + Sized + TensorTraits<T, { ORD - 1 }, M>,
+    [(); ORD - 1]:
+{
+    fn from( src: Tensor<T, { ORD - 1 }, M> ) -> Self {
+        Self::new(
+            src.shape(),
+            *src.memory()
+        )
+    }
+}
+    */
+
+impl<T, const ORD: usize, M> Add for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Add<Output = T>,
     M: MemoryType,
@@ -361,7 +527,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Sub for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Sub for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
     M: MemoryType,
@@ -382,7 +548,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Mul for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Mul for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     M: MemoryType,
@@ -403,7 +569,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Div for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Div for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Div<Output = T>,
     M: MemoryType,
@@ -424,7 +590,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Add<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Add<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Add<Output = T>,
     M: MemoryType,
@@ -442,7 +608,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Sub<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Sub<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Sub<Output = T>,
     M: MemoryType,
@@ -460,7 +626,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Mul<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Mul<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     M: MemoryType,
@@ -478,7 +644,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> Div<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Div<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + Div<Output = T>,
     M: MemoryType,
@@ -496,7 +662,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> AddAssign for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> AddAssign for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + AddAssign,
     M: MemoryType,
@@ -512,7 +678,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> SubAssign for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> SubAssign for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + SubAssign,
     M: MemoryType,
@@ -528,7 +694,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> MulAssign for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> MulAssign for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + MulAssign,
     M: MemoryType,
@@ -544,7 +710,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> DivAssign for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> DivAssign for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + DivAssign,
     M: MemoryType,
@@ -560,7 +726,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> AddAssign<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> AddAssign<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + AddAssign,
     M: MemoryType,
@@ -573,7 +739,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> SubAssign<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> SubAssign<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + SubAssign,
     M: MemoryType,
@@ -586,7 +752,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> MulAssign<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> MulAssign<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + MulAssign,
     M: MemoryType,
@@ -599,7 +765,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> DivAssign<T> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> DivAssign<T> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug + DivAssign,
     M: MemoryType,
@@ -613,36 +779,36 @@ where
 }
 
 // Dimensional Indexing
-impl<T, const DIM: usize, M> Index<[usize; DIM]> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Index<[usize; ORD]> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>,
-    Self: TensorTraits<T, DIM, M>
+    Self: TensorTraits<T, ORD, M>
 {
     type Output = T;
 
-    fn index( &self, index: [usize; DIM] ) -> &Self::Output {
-        let flat_idx = self.flat_idx( &index );
-        &self.memory[ flat_idx ]
+    fn index( &self, index: [usize; ORD] ) -> &Self::Output {
+        let idx = self.idx( &index );
+        &self.memory[ idx ]
     }
 }
 
-impl<T, const DIM: usize, M> IndexMut<[usize; DIM]> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> IndexMut<[usize; ORD]> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T>,
-    Self: TensorTraits<T, DIM, M>
+    Self: TensorTraits<T, ORD, M>
 {
-    fn index_mut( &mut self, index: [usize; DIM] ) -> &mut Self::Output {
-        let flat_idx = self.flat_idx( &index );
-        &mut self.memory[ flat_idx ]
+    fn index_mut( &mut self, index: [usize; ORD] ) -> &mut Self::Output {
+        let idx = self.idx( &index );
+        &mut self.memory[ idx ]
     }
 }
 
 // Flat Indexing
-impl<T, const DIM: usize, M> Index<usize> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> Index<usize> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
@@ -655,7 +821,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> IndexMut<usize> for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> IndexMut<usize> for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
@@ -666,7 +832,7 @@ where
     }
 }
 
-impl<T, const DIM: usize, M> IntoIterator for Tensor<T, DIM, M>
+impl<T, const ORD: usize, M> IntoIterator for Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
@@ -680,12 +846,12 @@ where
     }
 }
 
-impl<'a, T, const DIM: usize, M> IntoIterator for &'a Tensor<T, DIM, M>
+impl<'a, T, const ORD: usize, M> IntoIterator for &'a Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T> + IntoIterator<Item = T, IntoIter = std::slice::Iter<'a, T>>,
-    Tensor<T, DIM, M>: TensorTraits<T, DIM, M>
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>
 {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
@@ -695,12 +861,12 @@ where
     }
 }
 
-impl<'a, T, const DIM: usize, M> IntoIterator for &'a mut Tensor<T, DIM, M>
+impl<'a, T, const ORD: usize, M> IntoIterator for &'a mut Tensor<T, ORD, M>
 where
     T: Default + Copy + Debug,
     M: MemoryType,
     Memory<T, M>: MemoryTraits<Type = T> + IntoIterator<Item = T, IntoIter = std::slice::Iter<'a, T>>,
-    Tensor<T, DIM, M>: TensorTraits<T, DIM, M>
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>
 {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;
@@ -716,13 +882,16 @@ mod tests {
 
     #[test]
     fn new_stack_test() {
-        let tensor = Tensor::<f32, 1, Stack<3>>::new( [3].into() );
+        let tensor = Tensor::<f32, 1, Stack<3>>::new(
+            [3].into(),
+            [0.0, 0.0, 0.0]
+        );
         assert_eq!( tensor.memory.len(), 3 );
     }
 
     #[test]
     fn take_stack_test() {
-        let tensor = Tensor::<f32, 1, Stack<3>>::take(
+        let tensor = Tensor::<f32, 1, Stack<3>>::new(
             [3].into(),
             [1.0, 2.0, 3.0]
         );
@@ -731,13 +900,16 @@ mod tests {
 
     #[test]
     fn new_heap_test() {
-        let tensor = Tensor::<f32, 1, Heap>::new( [3].into() );
+        let tensor = Tensor::<f32, 1, Heap>::new(
+            [3].into(),
+            [ 0.0, 0.0, 0.0 ].into()
+        );
         assert_eq!( tensor.memory.len(), 3 );
     }
 
     #[test]
     fn take_heap_test() {
-        let tensor = Tensor::<f32, 1, Heap>::take(
+        let tensor = Tensor::<f32, 1, Heap>::new(
             [3].into(),
             [ 1.0, 2.0, 3.0 ].into()
         );
@@ -746,8 +918,9 @@ mod tests {
 
     #[test]
     fn identity_test() {
-        let mut tensor = Tensor::<f32, 2, Heap>::new( [2, 2].into() );
-        tensor.identity( 1.0 );
+        let tensor = Tensor::<f32, 2, Heap>::eye(
+            [2, 2].into()
+        );
         println!( "tensor: {:?}", tensor );
         assert_eq!( tensor[ [0, 0] ], 1.0 );
         assert_eq!( tensor[ [0, 1] ], 0.0 );
@@ -757,7 +930,10 @@ mod tests {
 
     #[test]
     fn iter_test() {
-        let mut tensor = Tensor::<f32, 1, Heap>::new( [3].into() );
+        let mut tensor = Tensor::<f32, 1, Heap>::new(
+            [3].into(),
+            [ 0.0, 0.0, 0.0 ].into()
+        );
         tensor[ 0 ] = 1.0;
         tensor[ 1 ] = 2.0;
         tensor[ 2 ] = 3.0;
@@ -771,7 +947,7 @@ mod tests {
 
     #[test]
     fn contract_test() {
-        let a = Tensor::<f32, 2, Heap>::take(
+        let a = Tensor::<f32, 2, Heap>::new(
             [2, 2].into(),
             [
                 1.0, 2.0,
@@ -779,7 +955,7 @@ mod tests {
             ].into()
         );
 
-        let b = Tensor::<f32, 2, Heap>::take(
+        let b = Tensor::<f32, 2, Heap>::new(
             [2, 2].into(),
             [
                 1.0, 2.0,
@@ -787,7 +963,7 @@ mod tests {
             ].into()
         );
 
-        let mut c = Tensor::<f32, 2, Stack<4>>::take(
+        let mut c = Tensor::<f32, 2, Stack<4>>::new(
             [2, 2].into(),
             [
                 0.0, 0.0,
