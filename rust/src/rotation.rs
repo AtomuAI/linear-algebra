@@ -37,7 +37,7 @@ use crate::{
         Vector2,
         Vector3
     },
-    ops::Contract
+    ops::MatrixMul
 };
 
 #[derive( Clone, Default, Debug )]
@@ -72,23 +72,25 @@ where
 
 impl<T> Mul<Vector2<T>> for Rot2<T>
 where
-    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
+    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float,
+    Matrix2x2<T>: MatrixMul<Vector2<T>, Output = Vector2<T>>
 {
     type Output = Vector2<T>;
 
     fn mul( self, rhs: Vector2<T> ) -> Self::Output {
-        self.contract( rhs )
+        self.mat_mul( rhs )
     }
 }
 
 impl<T> Mul for Rot2<T>
 where
-    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
+    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float,
+    Matrix2x2<T>: MatrixMul<Matrix2x2<T>, Output = Matrix2x2<T>>
 {
     type Output = Self;
 
     fn mul( self, rhs: Self ) -> Self::Output {
-        Self( self.contract( rhs.0 ) )
+        Self( self.mat_mul( rhs.0 ) )
     }
 }
 
@@ -110,23 +112,25 @@ where
 
 impl<T> Mul<Vector3<T>> for Rot3<T>
 where
-    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
+    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float,
+    Matrix3x3<T>: MatrixMul<Vector3<T>, Output = Vector3<T>>
 {
     type Output = Vector3<T>;
 
     fn mul( self, rhs: Vector3<T> ) -> Self::Output {
-        self.contract( rhs )
+        self.mat_mul( rhs )
     }
 }
 
 impl<T> Mul for Rot3<T>
 where
-    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float
+    T: Num + 'static + Default + Copy + Debug + Neg<Output = T> + AddAssign + Num + Float,
+    Matrix3x3<T>: MatrixMul<Matrix3x3<T>, Output = Matrix3x3<T>>
 {
     type Output = Self;
 
     fn mul( self, rhs: Self ) -> Self::Output {
-        Self( self.contract( rhs.0 ) )
+        Self( self.mat_mul( rhs.0 ) )
     }
 }
 

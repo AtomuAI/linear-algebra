@@ -12,8 +12,8 @@ use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
     ops::{
-        Contract,
-        ContractAssignTo,
+        MatrixMul,
+        MatrixMulAssignTo,
         InnerProduct,
         InnerProductAssignTo,
         OuterProduct,
@@ -302,22 +302,6 @@ where
             let matrix_ptr = self.0.as_mut_ptr();
             ( 0..ROW ).map( move |row| unsafe { &mut *matrix_ptr.add( Self::idx( col, row ) ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
         })
-    }
-
-    pub fn iter_dim<const DIM: usize>(&self) -> impl Iterator<Item = &T> {
-        match DIM {
-            0 => self.iter_rows().flatten(),
-            1 => self.iter_cols().flatten(),
-            _ => panic!("Invalid dimension: DIM must be 0 (row-wise) or 1 (column-wise)"),
-        }
-    }
-
-    pub fn iter_dim_mut<const DIM: usize>(&mut self) -> impl Iterator<Item = &mut T> {
-        match DIM {
-            0 => self.iter_rows_mut().flatten(),
-            1 => self.iter_cols_mut().flatten(),
-            _ => panic!("Invalid dimension: DIM must be 0 (row-wise) or 1 (column-wise)"),
-        }
     }
 }
 
@@ -721,7 +705,7 @@ where
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize> Contract<2, 1, Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize> MatrixMul<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -729,14 +713,40 @@ where
 {
     type Output = Vector<T, SHARED>;
 
-    fn contract( self, lhs_dims: [usize; 2], rhs_dims: [usize; 1], rhs: Vector<T, SHARED> ) -> Self::Output {
+    fn mat_mul( self, rhs: Vector<T, SHARED> ) -> Self::Output {
         let mut result = Vector::<T, SHARED>::default();
-        self.iter
+        for i in 0..SHARED {
+            for j in 0..LHS_ROW {
+                result[ i ] += self[[ i, j ]] * rhs[ j ];
+            }
+        }
         result
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize> ContractAssignTo<2, Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> MatrixMul<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
+    [ (); SHARED * LHS_ROW ]:,
+    [ (); RHS_COL * SHARED ]:,
+    [ (); RHS_COL * LHS_ROW ]:
+{
+    type Output = Matrix<T, RHS_COL, LHS_ROW>;
+
+    fn mat_mul( self, rhs: Matrix<T, RHS_COL, SHARED> ) -> Self::Output {
+        let mut result = Matrix::<T, RHS_COL, LHS_ROW>::default();
+        for i in 0..RHS_COL {
+            for j in 0..SHARED {
+                for k in 0..LHS_ROW {
+                    result[[ i, k ]] += self[[ j, k ]] * rhs[[ i, j ]];
+                }
+            }
+        }
+        result
+    }
+}
+
+impl<T, const SHARED: usize, const LHS_ROW: usize> MatrixMulAssignTo<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -744,7 +754,7 @@ where
 {
     type Output = Vector<T, SHARED>;
 
-    fn contract_assign_to( self, rhs: Vector<T, SHARED>, res: &mut Self::Output ) {
+    fn mat_mul_assign_to( self, rhs: Vector<T, SHARED>, res: &mut Self::Output ) {
         for i in 0..SHARED {
             for j in 0..LHS_ROW {
                 res[ i ] += self[[ i, j ]] * rhs[ j ];
@@ -753,7 +763,7 @@ where
     }
 }
 
-impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> Contract<2, Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
+impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> MatrixMulAssignTo<Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
     T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
     [ (); SHARED * LHS_ROW ]:,
@@ -761,38 +771,12 @@ where
     [ (); RHS_COL * LHS_ROW ]:
 {
     type Output = Matrix<T, RHS_COL, LHS_ROW>;
-    const LHS: [usize; 2] = [ 1, 1 ];
-    const RHS: [usize; 2] = [ 1, 1 ];
 
-    fn contract( self, rhs: Matrix<T, RHS_COL, SHARED> ) -> Self::Output {
-        let mut result = Matrix::<T, RHS_COL, LHS_ROW>::default();
-        for i in 0..LHS_ROW {
+    fn mat_mul_assign_to( self, rhs: Matrix<T, RHS_COL, SHARED>, res: &mut Self::Output ) {
+        for i in 0..RHS_COL {
             for j in 0..SHARED {
-                for k in 0..RHS_COL {
-                    result[[ i, k ]] += self[[ i, j ]] * rhs[[ j, k ]];
-                }
-            }
-        }
-        result
-    }
-}
-
-impl<T, const SHARED: usize, const LHS_ROW: usize, const RHS_COL: usize> ContractAssignTo<2, Matrix<T, RHS_COL, SHARED>> for Matrix<T, SHARED, LHS_ROW>
-where
-    T: Default + Copy + Debug + Mul<Output = T> + AddAssign,
-    [ (); SHARED * LHS_ROW ]:,
-    [ (); RHS_COL * SHARED ]:,
-    [ (); RHS_COL * LHS_ROW ]:
-{
-    type Output = Matrix<T, RHS_COL, LHS_ROW>;
-    const LHS: [usize; 2] = [ 1, 1 ];
-    const RHS: [usize; 2] = [ 1, 1 ];
-
-    fn contract_assign_to( self, rhs: Matrix<T, RHS_COL, SHARED>, res: &mut Self::Output ) {
-        for i in 0..LHS_ROW {
-            for j in 0..SHARED {
-                for k in 0..RHS_COL {
-                    res[[ i, k ]] += self[[ i, j ]] * rhs[[ j, k ]];
+                for k in 0..LHS_ROW {
+                    res[[ i, k ]] += self[[ j, k ]] * rhs[[ i, j ]];
                 }
             }
         }
@@ -1258,7 +1242,7 @@ mod tests {
 
     #[test]
     fn mat_mul_test() {
-        use crate::tensor::contract;
+        use crate::ops::MatrixMulAssignTo;
 
         let a = Matrix2x2::<f32>::from([
             1.0, 2.0,
@@ -1270,7 +1254,7 @@ mod tests {
             3.0, 4.0
         ]);
 
-        let c = Matrix2x2::<f32>::from([
+        let mut c = Matrix2x2::<f32>::from([
             0.0, 0.0,
             0.0, 0.0
         ]);
@@ -1280,10 +1264,7 @@ mod tests {
         println!( "b: {:?}", b );
         println!( "c: {:?}", c );
 
-        let a: Tensor<f32, 2, Stack<4>> = a.into();
-        let b: Tensor<f32, 2, Stack<4>> = b.into();
-        let mut c: Tensor<f32, 2, Stack<4>> = c.into();
-        contract( &a, &b, &mut c, &[1], &[0] );
+        a.mat_mul_assign_to( b, &mut c );
 
         println!( "After:");
         println!( "a: {:?}", a );
@@ -1291,8 +1272,8 @@ mod tests {
         println!( "c: {:?}", c );
 
         assert_eq!( c[[0, 0]], 7.0 );
-        assert_eq!( c[[0, 1]], 10.0 );
-        assert_eq!( c[[1, 0]], 15.0 );
+        assert_eq!( c[[1, 0]], 10.0 );
+        assert_eq!( c[[0, 1]], 15.0 );
         assert_eq!( c[[1, 1]], 22.0 );
     }
 

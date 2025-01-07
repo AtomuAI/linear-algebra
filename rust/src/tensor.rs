@@ -9,6 +9,7 @@ use std::{
 };
 use num::traits::Num;
 
+use const_expr_bounds::{ Assert, IsTrue, IsFalse };
 use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
 use crate::vector::Vector;
 use crate::matrix::Matrix;
@@ -21,7 +22,9 @@ use crate::{
         OuterProductAssignTo,
         Transpose,
         TransposeAssign,
-        TransposeAssignTo
+        TransposeAssignTo,
+        Contract,
+        ContractAssignTo,
     },
     shape::Shape,
     //slice::Slice
@@ -325,70 +328,139 @@ where
 }
 */
 
-pub fn contract<T, const D: usize, const E: usize, const F: usize, const G: usize, const H: usize, M, N, O, const CONTRACT_DIMS_A: [usize; G], const CONTRACT_DIMS_B: [usize; H]>(
-    a: &Tensor<T, D, M>,
-    b: &Tensor<T, E, N>,
-    c: &mut Tensor<T, F, O>,
-    contract_dims_a: &[usize],
-    contract_dims_b: &[usize],
-)
+pub const fn contracted_dim( lhs_dim: usize, rhs_dim: usize, ctr_dim: usize ) -> usize {
+    ( lhs_dim * rhs_dim ) / ( ctr_dim * 2 )
+}
+
+impl<T, M, N, O, const LHS_DIM: usize, const RHS_DIM: usize, const CTR_DIM: usize> Contract<CTR_DIM, &Tensor<T, RHS_DIM, N>, Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>> for &Tensor<T, LHS_DIM, M>
 where
     T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T> + AddAssign,
     M: MemoryType,
     N: MemoryType,
     O: MemoryType,
-    Tensor<T, D, M>: TensorTraits<T, D, M>,
-    Tensor<T, E, N>: TensorTraits<T, E, N>,
-    Tensor<T, F, O>: TensorTraits<T, F, O>,
+    Tensor<T, LHS_DIM, M>: TensorTraits<T, LHS_DIM, M>,
+    Tensor<T, RHS_DIM, N>: TensorTraits<T, RHS_DIM, N>,
+    Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>: TensorTraits<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>,
     Memory<T, M>: MemoryTraits<Type = T>,
     Memory<T, N>: MemoryTraits<Type = T>,
-    Memory<T, O>: MemoryTraits<Type = T>,
+    Memory<T, O>: MemoryTraits<Type = T> + Default,
+    M::Data<T>: Default,
+    Assert<{ CTR_DIM <= LHS_DIM }>: IsTrue,
+    Assert<{ CTR_DIM <= RHS_DIM }>: IsTrue,
+    [(); contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ]:
 {
-    if contract_dims_a.len() != contract_dims_b.len() {
-        panic!("Mismatched Sizes");
-    }
-    for (&dim_a, &dim_b) in contract_dims_a.iter().zip(contract_dims_b.iter()) {
-        if a.shape()[dim_a] != b.shape()[dim_b] {
-            panic!("Mismatched Shapes");
-        }
-    }
+    fn contract( self, lhs_contract_dims: [ usize; CTR_DIM ], rhs_contract_dims: [ usize; CTR_DIM ], rhs: &Tensor<T, RHS_DIM, N>, ) -> Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O> {
+        let mut res = Tensor::<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>::default();
 
-    let mut index_a = [0; D];
-    let mut index_b = [0; E];
-    let mut index_c = [0; F];
-
-    let non_contract_dims_a: Vec<_> = (0..D).filter(|d| !contract_dims_a.contains(d)).collect();
-    let non_contract_dims_b: Vec<_> = (0..E).filter(|d| !contract_dims_b.contains(d)).collect();
-
-    let contract_size = contract_dims_a.iter().map(|&d| a.shape()[d]).product();
-
-    for i in 0..c.size() { // Iterate over all elements of `c`
-        let mut remaining = i;
-
-        for d in (0..F).rev() { // Convert flat index to multi-dimensional index for `c`
-            index_c[d] = remaining % c.shape()[d];
-            remaining /= c.shape()[d];
-        }
-
-        for (c_idx, &a_idx) in non_contract_dims_a.iter().enumerate() { // Map `c` indices to `a` and `b` non-contracted dimensions
-            index_a[a_idx] = index_c[c_idx];
-        }
-        for (c_idx, &b_idx) in non_contract_dims_b.iter().enumerate() {
-            index_b[b_idx] = index_c[non_contract_dims_a.len() + c_idx];
-        }
-
-        let mut sum = T::default();
-
-        for j in 0..contract_size { // Sum over contracted dimensions
-            let mut remaining = j;
-            for (&dim_a, &dim_b) in contract_dims_a.iter().zip(contract_dims_b.iter()) {
-                index_a[dim_a] = remaining % a.shape()[dim_a];
-                index_b[dim_b] = remaining % b.shape()[dim_b];
-                remaining /= a.shape()[dim_a];
+        for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter() ) {
+            if self.shape()[ lhs_dim ] != rhs.shape()[ rhs_dim ] {
+                panic!( "Mismatched Shapes" );
             }
-            sum += a[index_a] * b[index_b];
         }
-        c[index_c] = sum;
+
+        let mut lhs_index = [ 0; LHS_DIM ];
+        let mut rhs_index = [ 0; RHS_DIM ];
+        let mut res_index = [ 0; contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ];
+
+        let lhs_non_contract_dims: Vec<usize> = ( 0..LHS_DIM ).filter( |dim| !lhs_contract_dims.contains( dim ) ).collect();
+        let rhs_non_contract_dims: Vec<usize> = ( 0..RHS_DIM ).filter( |dim| !rhs_contract_dims.contains( dim ) ).collect();
+
+        let contract_size = lhs_contract_dims.iter().map( |&dim| self.shape()[ dim ] ).product();
+
+        for i in 0..res.size() {
+            let mut remaining = i;
+
+            for dim in ( 0..contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ).rev() { // Convert flat index to multi-dimensional index for `c`
+                res_index[ dim ] = remaining % res.shape()[ dim ];
+                remaining /= res.shape()[ dim ];
+            }
+
+            for ( res_idx, &lhs_idx ) in lhs_non_contract_dims.iter().enumerate() { // Map `c` indices to `a` and `b` non-contracted dimensions
+                lhs_index[ lhs_idx ] = res_index[ res_idx ];
+            }
+            for ( res_idx, &rhs_idx ) in rhs_non_contract_dims.iter().enumerate() {
+                rhs_index[ rhs_idx ] = res_index[ lhs_non_contract_dims.len() + res_idx ];
+            }
+
+            let mut sum = T::default();
+
+            for j in 0..contract_size { // Sum over contracted dimensions
+                let mut remaining = j;
+                for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter()) {
+                    lhs_index[ lhs_dim ] = remaining % self.shape()[ lhs_dim ];
+                    rhs_index[ rhs_dim ] = remaining % rhs.shape()[ rhs_dim ];
+                    remaining /= self.shape()[ lhs_dim ];
+                }
+                sum += self[ lhs_index ] * rhs[ rhs_index ];
+            }
+            res[ res_index ] = sum;
+        }
+
+        res
+    }
+}
+
+impl<T, M, N, O, const LHS_DIM: usize, const RHS_DIM: usize, const CTR_DIM: usize> ContractAssignTo<CTR_DIM, &Tensor<T, RHS_DIM, N>, Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>> for &Tensor<T, LHS_DIM, M>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T> + AddAssign,
+    M: MemoryType,
+    N: MemoryType,
+    O: MemoryType,
+    Tensor<T, LHS_DIM, M>: TensorTraits<T, LHS_DIM, M>,
+    Tensor<T, RHS_DIM, N>: TensorTraits<T, RHS_DIM, N>,
+    Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>: TensorTraits<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O>,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Memory<T, N>: MemoryTraits<Type = T>,
+    Memory<T, O>: MemoryTraits<Type = T> + Default,
+    M::Data<T>: Default,
+    Assert<{ CTR_DIM <= LHS_DIM }>: IsTrue,
+    Assert<{ CTR_DIM <= RHS_DIM }>: IsTrue,
+    [(); contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ]:
+{
+    fn contract_assign_to( self, lhs_contract_dims: [ usize; CTR_DIM ], rhs_contract_dims: [ usize; CTR_DIM ], rhs: &Tensor<T, RHS_DIM, N>, res: &mut Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O> ) {
+        for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter() ) {
+            if self.shape()[ lhs_dim ] != rhs.shape()[ rhs_dim ] {
+                panic!( "Mismatched Shapes" );
+            }
+        }
+
+        let mut lhs_index = [ 0; LHS_DIM ];
+        let mut rhs_index = [ 0; RHS_DIM ];
+        let mut res_index = [ 0; contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ];
+
+        let lhs_non_contract_dims: Vec<usize> = ( 0..LHS_DIM ).filter( |dim| !lhs_contract_dims.contains( dim ) ).collect();
+        let rhs_non_contract_dims: Vec<usize> = ( 0..RHS_DIM ).filter( |dim| !rhs_contract_dims.contains( dim ) ).collect();
+
+        let contract_size = lhs_contract_dims.iter().map( |&dim| self.shape()[ dim ] ).product();
+
+        for i in 0..res.size() {
+            let mut remaining = i;
+
+            for dim in ( 0..contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) ).rev() { // Convert flat index to multi-dimensional index for `c`
+                res_index[ dim ] = remaining % res.shape()[ dim ];
+                remaining /= res.shape()[ dim ];
+            }
+
+            for ( res_idx, &lhs_idx ) in lhs_non_contract_dims.iter().enumerate() { // Map `c` indices to `a` and `b` non-contracted dimensions
+                lhs_index[ lhs_idx ] = res_index[ res_idx ];
+            }
+            for ( res_idx, &rhs_idx ) in rhs_non_contract_dims.iter().enumerate() {
+                rhs_index[ rhs_idx ] = res_index[ lhs_non_contract_dims.len() + res_idx ];
+            }
+
+            let mut sum = T::default();
+
+            for j in 0..contract_size { // Sum over contracted dimensions
+                let mut remaining = j;
+                for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter()) {
+                    lhs_index[ lhs_dim ] = remaining % self.shape()[ lhs_dim ];
+                    rhs_index[ rhs_dim ] = remaining % rhs.shape()[ rhs_dim ];
+                    remaining /= self.shape()[ lhs_dim ];
+                }
+                sum += self[ lhs_index ] * rhs[ rhs_index ];
+            }
+            res[ res_index ] = sum;
+        }
     }
 }
 
@@ -947,6 +1019,7 @@ mod tests {
 
     #[test]
     fn contract_test() {
+        use crate::ops::ContractAssignTo;
         let a = Tensor::<f32, 2, Heap>::new(
             [2, 2].into(),
             [
@@ -976,7 +1049,7 @@ mod tests {
         println!( "b: {:?}", b );
         println!( "c: {:?}", c );
 
-        contract( &a, &b, &mut c, &[1], &[0] );
+        (&a).contract_assign_to( [ 1 ], [ 0 ], &b, &mut c );
 
         println!( "After:");
         println!( "a: {:?}", a );

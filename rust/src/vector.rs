@@ -777,10 +777,10 @@ where
     type OutputA = Vector<T, A_COL>;
     type OutputB = Vector<T, B_COL>;
 
-    fn split_assign_to( self, res_a: &mut Self::OutputA, res_b: &mut Self::OutputB ) {
-        self.iter().take( A_COL ).zip( res_a.iter_mut() )
+    fn split_assign_to( self, res: ( &mut Self::OutputA, &mut Self::OutputB ) ) {
+        self.iter().take( A_COL ).zip( res.0.iter_mut() )
             .for_each( |( &value, a_value )| *a_value = value );
-        self.iter().skip( A_COL ).zip( res_b.iter_mut() )
+        self.iter().skip( A_COL ).zip( res.1.iter_mut() )
             .for_each( |( &value, b_value )| *b_value = value );
     }
 }
@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn mat_mul_test() {
         use crate::matrix::Matrix2x2;
-        use crate::tensor::contract;
+        use crate::ops::MatrixMulAssignTo;
 
         let a = Vector2::<f32>::from([
             1.0, 2.0
@@ -1070,7 +1070,7 @@ mod tests {
             3.0, 4.0
         ]);
 
-        let c = Vector2::<f32>::from([
+        let mut c = Vector2::<f32>::from([
             0.0, 0.0
         ]);
 
@@ -1095,10 +1095,7 @@ mod tests {
         println!( "b: {:?}", b );
         println!( "c: {:?}", c );
 
-        let a: Tensor<f32, 1, Stack<2>> = a.into();
-        let b: Tensor<f32, 2, Stack<4>> = b.into();
-        let mut c: Tensor<f32, 1, Stack<2>> = c.into();
-        contract( &a, &b, &mut c, &[0], &[0] );
+        b.mat_mul_assign_to( a, &mut c );
 
         println!( "After:");
         println!( "a: {:?}", a );

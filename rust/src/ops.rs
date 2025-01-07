@@ -1,5 +1,4 @@
-use std::process::Output;
-
+// Copyright 2024 Bewusstsein Labs
 
 /// The append operator.
 ///
@@ -37,18 +36,30 @@ pub trait SplitAssignTo<const A_SIZE: usize, const B_SIZE: usize> {
 
 /// The contraction operator.
 ///
-pub trait Contract<const LHS_ORD: usize, const RHS_ORD: usize, Rhs = Self> {
+pub trait MatrixMul<Rhs = Self> {
     type Output;
 
-    fn contract( self, lhs_dims: [usize; LHS_ORD], rhs_dims: [usize; RHS_ORD], rhs: Rhs ) -> Self::Output;
+    fn mat_mul( self, rhs: Rhs ) -> Self::Output;
 }
 
 /// The contraction assign to operator.
 ///
-pub trait ContractAssignTo<const LHS_ORD: usize, const RHS_ORD: usize, Rhs = Self> {
+pub trait MatrixMulAssignTo<Rhs = Self> {
     type Output;
 
-    fn contract_assign_to( self, lhs_dims: [usize; LHS_ORD], rhs_dims: [usize; RHS_ORD], rhs: Rhs, res: &mut Self::Output );
+    fn mat_mul_assign_to( self, rhs: Rhs, res: &mut Self::Output );
+}
+
+/// The contraction operator.
+///
+pub trait Contract<const CTR_ORD: usize, Rhs = Self, Res = Self> {
+    fn contract( self, lhs_dims: [ usize; CTR_ORD ], rhs_dims: [ usize; CTR_ORD ], rhs: Rhs ) -> Res;
+}
+
+/// The contraction assign to operator.
+///
+pub trait ContractAssignTo<const CTR_ORD: usize, Rhs = Self, Res = Self> {
+    fn contract_assign_to( self, lhs_dims: [ usize; CTR_ORD ], rhs_dims: [ usize; CTR_ORD ], rhs: Rhs, res: &mut Res );
 }
 
 /// The inner product operator.
