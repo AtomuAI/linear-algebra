@@ -33,6 +33,7 @@ bewusstsein = "*" # or the latest version
 pub mod ops;
 pub mod shape;
 pub mod tensor;
+pub mod slice;
 //pub mod slice;
 pub mod vector;
 pub mod matrix;

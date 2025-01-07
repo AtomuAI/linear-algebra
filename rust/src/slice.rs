@@ -1,28 +1,39 @@
 // Copyright 2024 Bewusstsein Labs
 
-use std::ops::{ Index, IndexMut };
+use std::{
+    collections::btree_map::Values, fmt::Debug, ops::{ Index, IndexMut }
+};
 
-use bewusstsein::memory::Memory;
+use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
 
-use crate::tensor::{ Tensor, Error };
+use crate::{
+    shape::Shape,
+    tensor::{ Tensor, TensorTraits, Error }
+};
 
-pub struct Slice<'a, T, const N: usize, M>
+#[derive( Debug )]
+pub struct Slice<'a, T, const ORD: usize, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
-    tensor: &'a mut Tensor<T, N, M>,
-    start: [usize; N],
-    end: [usize; N],
-    strides: [usize; N],
+    tensor: &'a mut Tensor<T, ORD, M>,
+    start: Shape<ORD>,
+    end: Shape<ORD>,
+    strides: Shape<ORD>,
 }
 
-impl<'a, T, const N: usize, M> Slice<'a, T, N, M>
+impl<'a, T, const ORD: usize, M> Slice<'a, T, ORD, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>
 {
-    pub fn new(tensor: &'a mut Tensor<T, N, M>, start: [usize; N], end: [usize; N], strides: [usize; N]) -> Self {
+    pub fn new( tensor: &'a mut Tensor<T, ORD, M>, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Self {
+        start.iter().zip( tensor.shape().iter() ).for_each( |( &s, &t )| assert!( s < t ) );
+        end.iter().zip( tensor.shape().iter() ).for_each( |( &e, &t )| assert!( e <= t ) );
         Slice {
             tensor,
             start,
@@ -31,114 +42,120 @@ where
         }
     }
 
-    pub fn dim( &self ) -> usize {
-        self.tensor.dim()
+    pub fn ord( &self ) -> usize {
+        self.tensor.ord()
     }
 
     pub fn size( &self ) -> usize {
         let mut size = 1;
-        for i in 0..N {
-            size *= (self.end[i] - self.start[i]) / self.strides[i];
+        for i in 0..ORD {
+            size *= ( self.end[ i ] - self.start[ i ] ) / self.strides[ i ];
         }
         size
     }
 
-    pub fn shape( &self ) -> [ usize; N ] {
-        let mut shape = [0; N];
-        for i in 0..N {
-            shape[i] = (self.end[i] - self.start[i]) / self.strides[i];
+    pub fn shape( &self ) -> Shape<ORD> {
+        let mut shape = Shape::<ORD>::default();
+        for i in 0..ORD {
+            shape[ i ] = ( self.end[ i ] - self.start[ i ] ) / self.strides[ i ];
         }
         shape
     }
 
-    pub fn tensor(&self) -> Result<Tensor<T, N, M>, Error> {
+    pub fn tensor( &self ) -> Result<Tensor<T, ORD, M>, Error> {
         let shape = self.shape();
-        let mut tensor = Tensor::new( shape );
+        let mut tensor = Tensor::zero( shape );
         for i in 0..self.size() {
-            let mut index = [0; N];
+            let mut index = [ 0; ORD ];
             let mut stride = 1;
-            for j in 0..N {
-                index[j] = (i / stride) % shape[j];
-                stride *= shape[j];
+            for j in 0..ORD {
+                index[ j ] = ( i / stride ) % shape[ j ];
+                stride *= shape[ j ];
             }
-            tensor[index] = self[index].clone();
+            tensor[ index ] = self[ index ];
         }
         Ok( tensor )
     }
 
-    pub fn fill(&mut self, value: T) {
+    pub fn fill( &mut self, value: T ) {
         let shape = self.shape();
         for i in 0..self.size() {
-            let mut index = [0; N];
+            let mut index = [ 0; ORD ];
             let mut stride = 1;
-            for j in 0..N {
-                index[j] = (i / stride) % shape[j];
-                stride *= shape[j];
+            for j in 0..ORD {
+                index[ j ] = ( i / stride ) % shape[ j ];
+                stride *= shape[ j ];
             }
-            self[index] = value.clone();
+            self[ index ] = value;
         }
     }
 
-    pub fn zero(&mut self) {
-        self.fill(T::default());
+    pub fn zero( &mut self ) {
+        self.fill( T::default() );
     }
 
-    fn calculate_flat_index(&self, index: &[usize; N]) -> usize {
+    fn idx( &self, index: [ usize; ORD ] ) -> usize {
         let mut flat_index = 0;
         let mut stride = 1;
-        for (i, &dim_index) in index.iter().rev().enumerate() {
-            let tensor_index = self.start[N - 1 - i] + dim_index * self.strides[N - 1 - i];
+        for ( i, &dim_index ) in index.iter().rev().enumerate() {
+            let tensor_index = self.start[ ORD - 1 - i ] + dim_index * self.strides[ ORD - 1 - i ];
             flat_index += tensor_index * stride;
-            stride *= self.tensor.shape()[N - 1 - i];
+            stride *= self.tensor.shape()[ ORD - 1 - i ];
         }
         flat_index
     }
 }
 
 // Dimensional Indexing
-impl<'a, T, const N: usize, M> Index<[usize; N]> for Slice<'a, T, N, M>
+impl<'a, T, const ORD: usize, M> Index<[usize; ORD]> for Slice<'a, T, ORD, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>
 {
     type Output = T;
 
-    fn index(&self, index: [usize; N]) -> &Self::Output {
-        let flat_index = self.calculate_flat_index(&index);
-        &self.tensor[flat_index]
+    fn index( &self, index: [ usize; ORD ] ) -> &Self::Output {
+        let flat_index = self.idx( index );
+        &self.tensor[ flat_index ]
     }
 }
 
-impl<'a, T, const N: usize, M> IndexMut<[usize; N]> for Slice<'a, T, N, M>
+impl<'a, T, const ORD: usize, M> IndexMut<[usize; ORD]> for Slice<'a, T, ORD, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>
 {
-    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
-        let flat_index = self.calculate_flat_index(&index);
-        &mut self.tensor[flat_index]
+    fn index_mut( &mut self, index: [ usize; ORD ] ) -> &mut Self::Output {
+        let flat_index = self.idx( index );
+        &mut self.tensor[ flat_index ]
     }
 }
 
 // Flat Indexing
-impl<'a, T, const N: usize, M> Index<usize> for Slice<'a, T, N, M>
+impl<'a, T, const ORD: usize, M> Index<usize> for Slice<'a, T, ORD, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
     type Output = T;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.tensor[index]
+    fn index( &self, index: usize ) -> &Self::Output {
+        &self.tensor[ index ]
     }
 }
 
-impl<'a, T, const N: usize, M> IndexMut<usize> for Slice<'a, T, N, M>
+impl<'a, T, const ORD: usize, M> IndexMut<usize> for Slice<'a, T, ORD, M>
 where
-    T: Default + Clone + Copy + PartialEq,
-    M: Memory<T>
+    T: 'static + Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
 {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.tensor[index]
+    fn index_mut( &mut self, index: usize ) -> &mut Self::Output {
+        &mut self.tensor[ index ]
     }
 }

@@ -11,8 +11,11 @@ use num::traits::Num;
 
 use const_expr_bounds::{ Assert, IsTrue, IsFalse };
 use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
-use crate::vector::Vector;
-use crate::matrix::Matrix;
+use crate::{
+    vector::Vector,
+    matrix::Matrix,
+    slice::Slice
+};
 
 use crate::{
     ops::{
@@ -134,7 +137,7 @@ where
         self._shape()
     }
 
-    //fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, S, M>;
+    fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, ORD, M>;
 
     /// Reshape the [`Tensor`] to a new shape.
     ///
@@ -252,6 +255,10 @@ where
         }
         Self::new( shape, memory )
     }
+
+    fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, ORD, Stack<N>> {
+        Slice::new( self, start, end, strides )
+    }
 }
 
 impl<T, const ORD: usize> TensorTraits<T, ORD, Heap> for Tensor<T, ORD, Heap>
@@ -284,6 +291,10 @@ where
             }
         }
         Self::new( shape, memory )
+    }
+
+    fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, ORD, Heap> {
+        Slice::new( self, start, end, strides )
     }
 }
 
@@ -1022,5 +1033,30 @@ mod tests {
         //assert_eq!( c[ [0, 1] ], 10.0 );
         //assert_eq!( c[ [1, 0] ], 15.0 );
         //assert_eq!( c[ [1, 1] ], 22.0 );
+    }
+
+    #[test]
+    fn slice_test() {
+        let mut tensor = Tensor::<f32, 2, Heap>::new(
+            [2, 2].into(),
+            [
+                1.0, 2.0,
+                3.0, 4.0,
+            ].into()
+        );
+
+        let slice = tensor.slice(
+            [0, 0].into(),
+            [2, 2].into(),
+            [1, 1].into()
+        );
+
+        for i in 0..slice.size() {
+            println!( "slice[{}]: {}", i, slice[ i ] );
+        }
+
+        for ( i, elem ) in tensor.iter().enumerate() {
+            println!( "tensor[{}]: {}", i, elem );
+        }
     }
 }
