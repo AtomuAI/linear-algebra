@@ -287,47 +287,6 @@ where
     }
 }
 
-/*
-pub fn product<T, const ORD: usize, const E: usize, const F: usize, M, N, O>(
-    a: &Tensor<T, ORD, M>,
-    b: &Tensor<T, E, N>,
-    c: &mut Tensor<T, F, O>
-)
-where
-    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T> + AddAssign,
-    M: MemoryType,
-    N: MemoryType,
-    O: MemoryType,
-    Tensor<T, ORD, M>: TensorTraits<T, ORD, M>,
-    Tensor<T, E, N>: TensorTraits<T, E, N>,
-    Tensor<T, F, O>: TensorTraits<T, F, O>,
-    Memory<T, M>: MemoryTraits<Type = T>,
-    Memory<T, N>: MemoryTraits<Type = T>,
-    Memory<T, O>: MemoryTraits<Type = T>,
-{
-    let a_shape = a.shape;
-    let b_shape = b.shape;
-    let c_shape = c.shape;
-
-    if a_shape[1] != b_shape[0] || c_shape[0] != a_shape[0] || c_shape[1] != b_shape[1] {
-        panic!("Mismatched Shapes");
-    }
-
-    for i in 0..a_shape[0] {
-        for j in 0..b_shape[1] {
-            let mut sum = T::default();
-            for k in 0..a_shape[1] {
-                let a_index = i * a_shape[1] + k;
-                let b_index = k * b_shape[1] + j;
-                sum += a[a_index] * b[b_index];
-            }
-            let c_index = i * c_shape[1] + j;
-            c[c_index] = sum;
-        }
-    }
-}
-*/
-
 pub const fn contracted_dim( lhs_dim: usize, rhs_dim: usize, ctr_dim: usize ) -> usize {
     ( lhs_dim + rhs_dim ) - ( 2 * ctr_dim )
 }
