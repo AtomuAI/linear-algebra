@@ -8,7 +8,10 @@ use std::{
 };
 use num::traits::{ Num, Pow };
 
-use crate::vector::Vector;
+use crate::{
+    traits::ConstReSizeable,
+    vector::Vector
+};
 
 #[derive(Debug, Clone)]
 pub struct GeneralizedPolynomial<T, U, const TERM: usize>
@@ -44,8 +47,9 @@ where
     where
         T: Default + Copy + Debug,
         U: Default + Copy + Debug,
+        Self: ConstReSizeable
     {
-        GeneralizedPolynomial::<T, U, NEW_TERM> { terms: self.terms.resize::<NEW_TERM>() }
+        GeneralizedPolynomial::<T, U, NEW_TERM> { terms: self.terms.resize() }
     }
 
     pub fn evaluate( &self, x: T ) -> T

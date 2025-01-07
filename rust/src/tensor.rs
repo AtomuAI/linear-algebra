@@ -18,6 +18,9 @@ use crate::{
 };
 
 use crate::{
+    traits::{
+        ConstShaped,
+    },
     ops::{
         InnerProduct,
         InnerProductAssignTo,
@@ -452,6 +455,7 @@ impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Tensor
 where
     T: Default + Copy + Debug,
     Memory<T, Stack<{COL * ROW}>>: MemoryTraits<Type = T, New = [T; COL * ROW]>,
+    Matrix<T, COL, ROW>: ConstShaped<2>,
     Self: Clone + TensorTraits<T, 2, Stack<{COL * ROW}>>,
     [(); COL * ROW]:
 {
@@ -468,10 +472,11 @@ impl<T, const COL: usize> From<Vector<T, COL>> for Tensor<T, 1, Heap>
 where
     T: Default + Copy + Debug,
     Memory<T, Stack<COL>>: MemoryTraits<Type = T, New = [T; COL]>,
+    Vector<T, COL>: ConstShaped<1>,
     Self: Clone + TensorTraits<T, 1, Stack<COL>>
 {
     fn from( src: Vector<T, COL> ) -> Self {
-        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
+        if src.shape()[ 0 ] != COL { panic!( "Mismatched column length" ); }
         let mut this = Self::default();
         this.iter_mut().zip( src.iter() )
             .for_each( |( a, &b )| *a = b );
@@ -484,12 +489,13 @@ impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Tensor
 where
     T: Default + Copy + Debug,
     Memory<T, Stack<{COL * ROW}>>: MemoryTraits<Type = T, New = [T; COL * ROW]>,
+    Matrix<T, COL, ROW>: ConstShaped<2>,
     Self: Clone + TensorTraits<T, 2, Stack<{COL * ROW}>>,
     [(); COL * ROW]:
 {
     fn from( src: Matrix<T, COL, ROW> ) -> Self {
-        if src.shape()[0] != COL { panic!( "Mismatched column length" ); }
-        if src.shape()[1] != ROW { panic!( "Mismatched row length" ); }
+        if src.shape()[ 0 ] != COL { panic!( "Mismatched column length" ); }
+        if src.shape()[ 1 ] != ROW { panic!( "Mismatched row length" ); }
         let mut this = Self::default();
         this.iter_mut().zip( src.iter() )
             .for_each( |( a, &b )| *a = b );

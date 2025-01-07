@@ -30,6 +30,7 @@ bewusstsein = "*" # or the latest version
 #![feature(adt_const_params)]
 #![feature(generic_const_exprs)]
 
+pub mod traits;
 pub mod ops;
 pub mod shape;
 pub mod tensor;

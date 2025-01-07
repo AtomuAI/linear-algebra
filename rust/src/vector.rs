@@ -3,15 +3,27 @@
 //mod test;
 
 use std::{
-    fmt::Debug,
-    ops::{ Deref, DerefMut, Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
+    default, fmt::Debug, ops::{ Add, AddAssign, Deref, DerefMut, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign }
 };
 use num::traits::Num;
 
+use const_expr_bounds::{ Assert, IsTrue };
 use memory::{ stack::Stack, heap::Heap };
 use arithmetic::{ AddAssignTo, SubAssignTo, MulAssignTo, DivAssignTo };
 
 use crate::{
+    traits::{
+        ConstOrder,
+        ConstShaped,
+        ConstSized,
+        ConstReShapeable,
+        ConstReSizeable,
+        ConstReOrder,
+        Sliceable,
+        Fillable,
+        Zeroable,
+        Clearable
+    },
     ops::{
         Append,
         AppendAssignTo,
@@ -63,8 +75,11 @@ where
     /// The order of a [`Vector`] is always 1.
     ///
     #[inline(always)]
-    pub const fn ord( &self ) -> usize {
-        1
+    pub const fn ord( &self ) -> usize
+    where
+        Self: ConstOrder
+    {
+        Self::ORD
     }
 
     /// Returns the number of columns in the [`Vector`].
@@ -81,22 +96,11 @@ where
     /// The shape of a [`Vector`] is always a single column.
     ///
     #[inline(always)]
-    pub const fn shape( &self ) -> Shape<1> {
-        Shape::new_const( [COL] )
-    }
-
-    /// Resizes the [`Vector`] to a new size.
-    ///
-    /// Creates a newly sized [`Vector`] with the same elements as the original [`Vector`].
-    ///
-    pub fn resize<const NEW_COL: usize>( self ) -> Vector<T, NEW_COL>
+    pub const fn shape( &self ) -> Shape<1>
     where
-        T: Default + Copy + Debug,
+        Self: ConstShaped<1>
     {
-        let mut result = Vector::default();
-        self.iter().zip( result.iter_mut() )
-            .for_each( |( &value, result_value )| *result_value = value );
-        result
+        Self::SHAPE
     }
 
     /// Returns the dot product of two [`Vector`]s.
@@ -125,6 +129,77 @@ where
     ///
     pub fn iter_mut( &mut self ) -> impl Iterator<Item = &mut T> {
         self.0.iter_mut()
+    }
+}
+
+impl<T, const COL: usize> ConstOrder for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    const ORD: usize = 1;
+}
+
+impl<T, const COL: usize> ConstShaped<1> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    const SHAPE: Shape<1> = Shape::new_const([ COL ]);
+}
+
+impl<T, const COL: usize> ConstSized for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    const SIZE: usize = COL;
+}
+
+impl<T, const OLD_COL: usize, const NEW_COL: usize> ConstReSizeable<Vector<T, NEW_COL>> for Vector<T, OLD_COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn resize( self ) -> Vector<T, NEW_COL> {
+        let mut res = Vector::<T, NEW_COL>([T::default(); NEW_COL]);
+        let len = OLD_COL.min( NEW_COL );
+        res.0[ ..len ].copy_from_slice( &self.0[ ..len ] );
+        res
+    }
+}
+
+impl<T, const OLD_COL: usize, const NEW_COL: usize, const NEW_ROW: usize> ConstReOrder<Matrix<T, NEW_COL, NEW_ROW>> for Vector<T, OLD_COL>
+where
+    Assert<{ NEW_COL * NEW_ROW == OLD_COL }>: IsTrue,
+    T: 'static + Copy + Default + Debug,
+    [ (); NEW_COL * NEW_ROW ]:
+{
+    fn reorder( self ) -> Matrix<T, NEW_COL, NEW_ROW> {
+        unsafe { *( &self as *const Vector<T, OLD_COL> as *const Matrix<T, NEW_COL, NEW_ROW> ) } // SAFETY: This is safe because we have asserted that the total number of elements is the same
+    }
+}
+
+impl<T, const COL: usize> Fillable<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn fill( &mut self, value: T ) {
+        self.0 = [ value; COL ];
+    }
+}
+
+impl<T, const COL: usize> Zeroable<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug + Num
+{
+    fn zero( &mut self ) {
+        self.0 = [ T::zero(); COL ];
+    }
+}
+
+impl<T, const COL: usize> Clearable<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug + Num
+{
+    fn clear( &mut self ) {
+        self.0 = [ T::default(); COL ];
     }
 }
 
@@ -186,14 +261,14 @@ where
     }
 }
 
-#[allow(clippy::identity_op)]
 impl<T, const COL: usize, const ROW: usize> From<Matrix<T, COL, ROW>> for Vector<T, {COL * ROW}>
 where
     T: 'static + Copy + Default + Debug,
+    Matrix<T, COL, ROW>: ConstReOrder<Vector<T, {COL * ROW}>>,
     [(); COL * ROW]:
 {
     fn from( src: Matrix<T, COL, ROW> ) -> Self {
-        unsafe{ ::core::ptr::read( &src as *const Matrix<T, COL, ROW> as *const Vector<T, {COL * ROW}> ) }
+        src.reorder()
     }
 }
 
@@ -726,9 +801,9 @@ where
     type Output = Vector<T, {LHS_COL + RHS_COL}>;
 
     fn append( self, other: Vector<T, RHS_COL> ) -> Self::Output {
-        let mut result = Vector::<T, {LHS_COL + RHS_COL}>::default();
-        self.iter().chain( other.iter() ).zip( result.iter_mut() )
-            .for_each( |( &value, result_value )| *result_value = value );
+        let mut result = Vector::<T, { LHS_COL + RHS_COL }>( [ T::default(); LHS_COL + RHS_COL ] );
+        result.0[ ..LHS_COL ].copy_from_slice( &self.0 );
+        result.0[ LHS_COL.. ].copy_from_slice( &other.0 );
         result
     }
 }
@@ -741,8 +816,8 @@ where
     type Output = Vector<T, {LHS_COL + RHS_COL}>;
 
     fn append_assign_to( self, rhs: Vector<T, RHS_COL>, res: &mut Self::Output ) {
-        self.iter().chain( rhs.iter() ).zip( res.iter_mut() )
-            .for_each( |( &value, result_value )| *result_value = value );
+        res.0[ ..LHS_COL ].copy_from_slice( &self.0 );
+        res.0[ LHS_COL.. ].copy_from_slice( &rhs.0 );
     }
 }
 
@@ -757,12 +832,10 @@ where
     type OutputB = Vector<T, B_COL>;
 
     fn split( self ) -> ( Self::OutputA, Self::OutputB ) {
-        let mut a = Vector::<T, A_COL>::default();
-        let mut b = Vector::<T, B_COL>::default();
-        self.iter().take( A_COL ).zip( a.iter_mut() )
-            .for_each( |( &value, a_value )| *a_value = value );
-        self.iter().skip( A_COL ).zip( b.iter_mut() )
-            .for_each( |( &value, b_value )| *b_value = value );
+        let mut a = Vector::<T, A_COL>( [ T::default(); A_COL ] );
+        let mut b = Vector::<T, B_COL>( [ T::default(); B_COL ] );
+        a.0.copy_from_slice( &self.0[ ..A_COL ] );
+        b.0.copy_from_slice( &self.0[ A_COL.. ] );
         ( a, b )
     }
 }
@@ -778,10 +851,8 @@ where
     type OutputB = Vector<T, B_COL>;
 
     fn split_assign_to( self, res: ( &mut Self::OutputA, &mut Self::OutputB ) ) {
-        self.iter().take( A_COL ).zip( res.0.iter_mut() )
-            .for_each( |( &value, a_value )| *a_value = value );
-        self.iter().skip( A_COL ).zip( res.1.iter_mut() )
-            .for_each( |( &value, b_value )| *b_value = value );
+        res.0.0.copy_from_slice( &self.0[ ..A_COL ] );
+        res.1.0.copy_from_slice( &self.0[ A_COL.. ] );
     }
 }
 
@@ -977,48 +1048,52 @@ impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProduct<Vector<T, RHS_
 where
     T: Default + Copy + Debug + Mul<Output = T>,
     Self: OuterProduct<Vector<T, RHS_COL>>,
+    Matrix<T, LHS_COL, RHS_COL>: ConstReOrder<Vector<T, {LHS_COL * RHS_COL}>>,
     [(); LHS_COL * RHS_COL]:
 {
     type Output = Vector<T, {LHS_COL * RHS_COL}>;
 
     fn tensor_product( self, rhs: Vector<T, RHS_COL> ) -> Self::Output {
-        (&self).outer_product( &rhs ).into()
+        (&self).outer_product( &rhs ).reorder()
     }
 }
 
 impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProduct<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
+    Matrix<T, LHS_COL, RHS_COL>: ConstReOrder<Vector<T, {LHS_COL * RHS_COL}>>,
     [(); LHS_COL * RHS_COL]:
 {
     type Output = Vector<T, {LHS_COL * RHS_COL}>;
 
     fn tensor_product( self, rhs: &Vector<T, RHS_COL> ) -> Self::Output {
-        self.outer_product( rhs ).into()
+        self.outer_product( rhs ).reorder()
     }
 }
 
 impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProductAssignTo<Vector<T, RHS_COL>> for Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
+    Vector<T, { LHS_COL * RHS_COL }>: ConstReOrder<Matrix<T, LHS_COL, RHS_COL>>,
     [(); LHS_COL * RHS_COL]:
 {
     type Output = Vector<T, {LHS_COL * RHS_COL}>;
 
     fn tensor_product_assign_to( self, rhs: Vector<T, RHS_COL>, res: &mut Self::Output ) {
-        (&self).outer_product_assign_to( &rhs, &mut (*res).into() );
+        (&self).outer_product_assign_to( &rhs, &mut (*res).reorder() );
     }
 }
 
 impl<T, const LHS_COL: usize, const RHS_COL: usize> TensorProductAssignTo<&Vector<T, RHS_COL>> for &Vector<T, LHS_COL>
 where
     T: Default + Copy + Debug + Mul<Output = T>,
+    Vector<T, { LHS_COL * RHS_COL }>: ConstReOrder<Matrix<T, LHS_COL, RHS_COL>>,
     [(); LHS_COL * RHS_COL]:
 {
     type Output = Vector<T, {LHS_COL * RHS_COL}>;
 
     fn tensor_product_assign_to( self, rhs: &Vector<T, RHS_COL>, res: &mut Self::Output ) {
-        self.outer_product_assign_to( rhs, &mut (*res).into() );
+        self.outer_product_assign_to( rhs, &mut (*res).reorder() );
     }
 }
 

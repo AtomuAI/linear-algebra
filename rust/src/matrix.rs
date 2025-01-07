@@ -7,10 +7,22 @@ use std::{
     ops::{ Deref, DerefMut, Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign }
 };
 use num::traits::Num;
-
+use const_expr_bounds::{ Assert, IsTrue };
 use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
+    traits::{
+        ConstOrder,
+        ConstShaped,
+        ConstSized,
+        ConstReShapeable,
+        ConstReSizeable,
+        ConstReOrder,
+        Sliceable,
+        Fillable,
+        Zeroable,
+        Clearable
+    },
     ops::{
         Determinant,
         MatrixMul,
@@ -79,8 +91,11 @@ where
     /// The order of a [`Matrix`] is always 2.
     ///
     #[inline(always)]
-    pub const fn ord( &self ) -> usize {
-        2
+    pub const fn ord( &self ) -> usize
+    where
+        Self: ConstOrder
+    {
+        Self::ORD
     }
 
     /// Returns the number of columns in the [`Matrix`].
@@ -115,8 +130,11 @@ where
     /// The shape of a [`Matrix`] is always `[COL, ROW]`.
     ///
     #[inline(always)]
-    pub const fn shape( &self ) -> Shape<2> {
-        Shape::new_const( [ COL, ROW ] )
+    pub const fn shape( &self ) -> Shape<2>
+    where
+        Self: ConstShaped<2>
+    {
+        Self::SHAPE
     }
 
     /// Returns the index of the [`Matrix`] at the given column and row.
@@ -145,56 +163,6 @@ where
     #[inline(always)]
     pub const fn coord_const( idx: usize ) -> [usize; 2] {
         [ idx % COL, idx / COL ]
-    }
-
-    /// Fill the [`Matrix`] with a given value.
-    ///
-    pub fn fill( &mut self, value: T ) {
-        self.0.iter_mut().for_each( |item| *item = value );
-    }
-
-    /// Clear the [`Matrix`].
-    ///
-    pub fn clear( &mut self )
-    where
-        T: Default
-    {
-        self.0.iter_mut().for_each( |item| *item = T::default() );
-    }
-
-    /// Reshapes the [`Matrix`] with the new column and row sizes.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the total number of elements is not the same.
-    ///
-    pub fn reshape<const NEW_COL: usize, const NEW_ROW: usize>( self ) -> Matrix<T, NEW_COL, NEW_ROW>
-    where
-        T: Default + Copy + Debug,
-        [(); NEW_COL * NEW_ROW]:,
-    {
-        assert_eq!( COL * ROW, NEW_COL * NEW_ROW, "Total number of elements must remain the same for reshape." );
-        unsafe { *( &self as *const Matrix<T, COL, ROW> as *const Matrix<T, NEW_COL, NEW_ROW> ) } // SAFETY: This is safe because we have asserted that the total number of elements is the same
-    }
-
-    /// Resizes the [`Matrix`] with the new column and row sizes.
-    ///
-    pub fn resize<const NEW_COL: usize, const NEW_ROW: usize>( &self ) -> Matrix<T, NEW_COL, NEW_ROW>
-    where
-        T: Default + Copy + Debug,
-        [(); NEW_COL * NEW_ROW]:
-    {
-        let mut result = Matrix::default();
-        let min_cols = COL.min( NEW_COL );
-        let min_rows = ROW.min( NEW_ROW );
-
-        self.0.chunks( COL ).take( min_rows ).enumerate().for_each( |( row, chunk )| {
-            chunk.iter().take( min_cols ).enumerate().for_each( |( col, &value )| {
-                result.0[ Self::idx( row, col ) ] = value;
-            });
-        });
-
-        result
     }
 
     /// Returns an iterator over the elements of the [`Matrix`].
@@ -230,13 +198,13 @@ where
     /// The iterator yields mutable references to the elements of the [`Matrix`] in order.
     ///
     pub fn iter_col_wise_mut( &mut self ) -> impl Iterator<Item = &mut T> {
-            let self_ptr = self as *mut Self;
-            ( 0..COL ).flat_map( move |col| {
-                ( 0..ROW ).map( move |row| unsafe {
-                    &mut (*self_ptr)[[ col, row ]]
-                })
+        let self_ptr = self as *mut Self;
+        ( 0..COL ).flat_map( move |col| {
+            ( 0..ROW ).map( move |row| unsafe {
+                &mut (*self_ptr)[[ col, row ]]
             })
-        }
+        })
+    }
 
     /// Returns an iterator over the elements of the [`Matrix`] by row.
     ///
@@ -303,6 +271,103 @@ where
             let matrix_ptr = self.0.as_mut_ptr();
             ( 0..ROW ).map( move |row| unsafe { &mut *matrix_ptr.add( Self::idx( col, row ) ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
         })
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> ConstOrder for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    const ORD: usize = 1;
+}
+
+impl<T, const COL: usize, const ROW: usize> ConstShaped<1> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    const SHAPE: Shape<1> = Shape::new_const([ COL ]);
+}
+
+impl<T, const COL: usize, const ROW: usize> ConstSized for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    const SIZE: usize = COL;
+}
+
+impl<T, const OLD_COL: usize, const OLD_ROW: usize,const NEW_COL: usize, const NEW_ROW: usize> ConstReShapeable<Matrix<T, NEW_COL, NEW_ROW>> for Matrix<T, OLD_COL, OLD_ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    Assert<{ NEW_COL * NEW_ROW == OLD_COL * OLD_ROW }>: IsTrue,
+    [ (); OLD_COL * OLD_ROW ]:,
+    [ (); NEW_COL * NEW_ROW ]:
+{
+    fn reshape( self ) -> Matrix<T, NEW_COL, NEW_ROW> {
+        unsafe { *( &self as *const Matrix<T, OLD_COL, OLD_ROW> as *const Matrix<T, NEW_COL, NEW_ROW> ) } // SAFETY: This is safe because we have asserted that the total number of elements is the same
+    }
+}
+
+impl<T, const OLD_COL: usize, const OLD_ROW: usize,const NEW_COL: usize, const NEW_ROW: usize> ConstReSizeable<Matrix<T, NEW_COL, NEW_ROW>> for Matrix<T, OLD_COL, OLD_ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); OLD_COL * OLD_ROW ]:,
+    [ (); NEW_COL * NEW_ROW ]:
+{
+    fn resize( self ) -> Matrix<T, NEW_COL, NEW_ROW> {
+        let mut res = Matrix::<T, NEW_COL, NEW_ROW>( [ T::default(); NEW_COL * NEW_ROW ] );
+        let min_rows = OLD_ROW.min( NEW_ROW );
+        let min_cols = OLD_COL.min( NEW_COL );
+        for row in 0..min_rows {
+            let old_start = row * OLD_COL;
+            let old_end = old_start + min_cols;
+            let new_start = row * NEW_COL;
+            let new_end = new_start + min_cols;
+            res.0[ new_start..new_end ].copy_from_slice( &self.0[ old_start..old_end ] );
+        }
+        res
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> ConstReOrder<Vector<T, { COL * ROW }>> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    fn reorder( self ) -> Vector<T, { COL * ROW }> {
+        unsafe { *( &self as *const Matrix<T, COL, ROW> as *const Vector<T, { COL * ROW }> ) } // SAFETY: This is safe because we have asserted that the total number of elements is the same
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Fillable<T> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    fn fill( &mut self, value: T ) {
+        self.0 = [ value; COL * ROW ];
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Zeroable<T> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug + Num,
+    [ (); COL * ROW ]:
+{
+    fn zero( &mut self ) {
+        self.0 = [ T::zero(); COL * ROW ];
+    }
+}
+
+impl<T, const COL: usize, const ROW: usize> Clearable<T> for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug + Num,
+    [ (); COL * ROW ]:
+{
+    fn clear( &mut self ) {
+        self.0 = [ T::default(); COL * ROW ];
     }
 }
 
@@ -448,10 +513,11 @@ where
 impl<T, const COL: usize, const ROW: usize> From<Vector<T, {COL * ROW}>> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
+    Vector<T, {COL * ROW}>: ConstReOrder<Matrix<T, COL, ROW>>,
     [(); COL * ROW]:
 {
     fn from( src: Vector<T, {COL * ROW}> ) -> Self {
-        unsafe{ ::core::ptr::read( &src as *const Vector<T, {COL * ROW}> as *const Matrix<T, COL, ROW> ) }
+        src.reorder()
     }
 }
 

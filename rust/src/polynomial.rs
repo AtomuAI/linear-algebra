@@ -8,7 +8,10 @@ use std::{
 };
 use num::traits::{ Num, Pow };
 
-use crate::vector::Vector;
+use crate::{
+    traits::ConstReSizeable,
+    vector::Vector
+};
 
 #[derive(Debug, Clone)]
 pub struct Polynomial<T, const DEG: usize>
@@ -41,8 +44,9 @@ where
     pub fn resize<const NEW_DEG: usize>( &self ) -> Polynomial<T, NEW_DEG>
     where
         T: Default + Copy + Debug,
+        Self: ConstReSizeable
     {
-        Polynomial::<T, NEW_DEG> { coefficients: self.coefficients.resize::<NEW_DEG>() }
+        Polynomial::<T, NEW_DEG> { coefficients: self.coefficients.resize() }
     }
 
     pub fn evaluate( &self, x: T ) -> T
