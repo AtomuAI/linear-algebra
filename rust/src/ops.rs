@@ -34,6 +34,14 @@ pub trait SplitAssignTo<const A_SIZE: usize, const B_SIZE: usize> {
     fn split_assign_to( self, res: ( &mut Self::OutputA, &mut Self::OutputB ) );
 }
 
+// The determinant operator.
+//
+pub trait Determinant {
+    type Output;
+
+    fn determinant( self ) -> Self::Output;
+}
+
 /// The contraction operator.
 ///
 pub trait MatrixMul<Rhs = Self> {

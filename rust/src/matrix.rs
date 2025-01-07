@@ -12,6 +12,7 @@ use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
     ops::{
+        Determinant,
         MatrixMul,
         MatrixMulAssignTo,
         InnerProduct,
@@ -704,6 +705,20 @@ where
             .for_each( |a| *a /= scalar );
     }
 }
+
+/*
+impl<T, const SHARED: usize> Determinant for Matrix<T, SHARED, SHARED>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T> + Sub<Output = T> + Num,
+    [ (); SHARED * SHARED ]:,
+{
+    type Output = T;
+
+    fn determinant( self ) -> Self::Output {
+
+    }
+}
+*/
 
 impl<T, const SHARED: usize, const LHS_ROW: usize> MatrixMul<Vector<T, SHARED>> for Matrix<T, SHARED, LHS_ROW>
 where
