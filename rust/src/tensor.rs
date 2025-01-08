@@ -440,7 +440,7 @@ where
 
         for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter() ) {
             if self.shape()[ lhs_dim ] != rhs.shape()[ rhs_dim ] {
-                panic!( "Mismatched Shapes" );
+                panic!( "Mismatched Contration Dims" );
             }
         }
 
@@ -477,6 +477,8 @@ where
                     rhs_index[ rhs_dim ] = remaining % rhs.shape()[ rhs_dim ];
                     remaining /= self.shape()[ lhs_dim ];
                 }
+                println!( "sum += self[{:?}] * rhs[{:?}]", lhs_index, rhs_index );
+                println!( "sum += self[{}] * rhs[{}]", self.idx( &lhs_index ), rhs.idx( &rhs_index ) );
                 sum += self[ lhs_index ] * rhs[ rhs_index ];
             }
             res[ res_index ] = sum;
@@ -506,7 +508,7 @@ where
     fn contract_assign_to( self, lhs_contract_dims: [ usize; CTR_DIM ], rhs_contract_dims: [ usize; CTR_DIM ], rhs: &Tensor<T, RHS_DIM, N>, res: &mut Tensor<T, { contracted_dim( LHS_DIM, RHS_DIM, CTR_DIM ) }, O> ) {
         for ( &lhs_dim, &rhs_dim ) in lhs_contract_dims.iter().zip( rhs_contract_dims.iter() ) {
             if self.shape()[ lhs_dim ] != rhs.shape()[ rhs_dim ] {
-                panic!( "Mismatched Shapes" );
+                panic!( "Mismatched Contration Dims" );
             }
         }
 
@@ -543,6 +545,8 @@ where
                     rhs_index[ rhs_dim ] = remaining % rhs.shape()[ rhs_dim ];
                     remaining /= self.shape()[ lhs_dim ];
                 }
+                println!( "sum += self[{:?}] * rhs[{:?}]", lhs_index, rhs_index );
+                println!( "sum += self[{}] * rhs[{}]", self.idx( &lhs_index ), rhs.idx( &rhs_index ) );
                 sum += self[ lhs_index ] * rhs[ rhs_index ];
             }
             res[ res_index ] = sum;
