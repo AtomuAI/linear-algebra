@@ -8,6 +8,19 @@ use memory::{ Memory, MemoryType, MemoryTraits, stack::Stack, heap::Heap };
 
 use crate::{
     shape::Shape,
+    traits::{
+        ConstOrder,
+        ConstShaped,
+        DynShaped,
+        ConstSized,
+        ConstReShapeable,
+        ConstReSizeable,
+        ConstReOrder,
+        Sliceable,
+        Fillable,
+        Zeroable,
+        Clearable
+    },
     tensor::{ Tensor, TensorTraits, Error }
 };
 
@@ -42,8 +55,11 @@ where
         }
     }
 
-    pub fn ord( &self ) -> usize {
-        self.tensor.ord()
+    pub const fn ord( &self ) -> usize
+    where
+    Tensor<T, ORD, M>: ConstOrder
+    {
+        Tensor::<T, ORD, M>::ORD
     }
 
     pub fn size( &self ) -> usize {
@@ -62,9 +78,12 @@ where
         shape
     }
 
-    pub fn tensor( &self ) -> Result<Tensor<T, ORD, M>, Error> {
+    pub fn tensor( &self ) -> Result<Tensor<T, ORD, M>, Error>
+    where
+        Tensor::<T, ORD, M>: Default
+    {
         let shape = self.shape();
-        let mut tensor = Tensor::zero( shape );
+        let mut tensor = Tensor::<T, ORD, M>::default();
         for i in 0..self.size() {
             let mut index = [ 0; ORD ];
             let mut stride = 1;

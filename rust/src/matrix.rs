@@ -14,6 +14,7 @@ use crate::{
     traits::{
         ConstOrder,
         ConstShaped,
+        DynShaped,
         ConstSized,
         ConstReShapeable,
         ConstReSizeable,
@@ -533,6 +534,7 @@ where
 impl<T, const COL: usize, const ROW: usize> From<Tensor<T, 2, Heap>> for Matrix<T, COL, ROW>
 where
     T: 'static + Copy + Default + Debug,
+    Tensor<T, 2, Heap>: DynShaped<2>,
     [ (); COL * ROW ]:
 {
     fn from( src: Tensor<T, 2, Heap> ) -> Self {

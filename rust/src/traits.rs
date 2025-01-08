@@ -38,24 +38,28 @@ pub trait ConstReShapeable<Res = Self> {
     fn reshape( self ) -> Res;
 }
 
-pub trait DynReShapeable {
-    fn reshape( &mut self );
+pub trait DynReShapeable<const ORD: usize> {
+    fn reshape( &mut self, shane: Shape<ORD> ); //TODO: Should return a Result
 }
 
 pub trait ConstReSizeable<Res = Self> {
     fn resize( self ) -> Res;
 }
 
-pub trait DynReSizeable {
-    fn resize( &mut self );
+pub trait DynReSizeable<const ORD: usize> {
+    fn resize( &mut self, shane: Shape<ORD> ); //TODO: Should return a Result
 }
 
 pub trait ConstReOrder<Res = Self> {
     fn reorder( self ) -> Res;
 }
 
-pub trait DynReOrder {
-    fn reorder( &mut self );
+pub trait DynReOrder<const NEW_ORD: usize, Res = Self> {
+    fn reorder( self, shape: Shape<NEW_ORD> ) -> Res;
+}
+
+pub trait Flatten<Res = Self> {
+    fn flatten( self ) -> Res;
 }
 
 pub trait Sliceable<T, const ORD: usize, M>

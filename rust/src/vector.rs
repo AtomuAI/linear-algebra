@@ -15,6 +15,7 @@ use crate::{
     traits::{
         ConstOrder,
         ConstShaped,
+        DynShaped,
         ConstSized,
         ConstReShapeable,
         ConstReSizeable,
@@ -283,7 +284,8 @@ where
 
 impl<T, const COL: usize> From<Tensor<T, 1, Heap>> for Vector<T, COL>
 where
-    T: 'static + Copy + Default + Debug
+    T: 'static + Copy + Default + Debug,
+    Tensor<T, 1, Heap>: DynShaped<1>,
 {
     fn from( src: Tensor<T, 1, Heap> ) -> Self {
         if src.shape()[0] != COL { panic!( "Mismatched column length" ); }

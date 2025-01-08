@@ -3,9 +3,7 @@
 //mod test;
 
 use std::{
-    fmt::Debug,
-    ops::{ Index, IndexMut, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign },
-    marker::PhantomData
+    fmt::Debug, marker::PhantomData, ops::{ Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign }
 };
 use num::traits::Num;
 
@@ -19,7 +17,18 @@ use crate::{
 
 use crate::{
     traits::{
+        ConstOrder,
         ConstShaped,
+        DynShaped,
+        DynSized,
+        DynReShapeable,
+        DynReSizeable,
+        DynReOrder,
+        Flatten,
+        Sliceable,
+        Fillable,
+        Zeroable,
+        Clearable
     },
     ops::{
         InnerProduct,
@@ -122,54 +131,14 @@ where
     ///
     fn eye( shape: Shape<ORD> ) -> Self where T: Num;
 
-    /// Get the order of the [`Tensor`].
-    ///
-    fn ord( &self ) -> usize {
-        self._shape().ord()
-    }
-
-    /// Get the total size of the [`Tensor`].
-    ///
-    fn size( &self ) -> usize {
-        self.memory().len()
-    }
-
-    /// Get the shape of the [`Tensor`].
-    ///
-    fn shape( &self ) -> &Shape<ORD> {
-        self._shape()
-    }
-
     fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, ORD, M>;
-
-    /// Reshape the [`Tensor`] to a new shape.
-    ///
-    fn reshape( &mut self, shape: Shape<ORD> ) -> Result<(), Error> {
-        match shape.vol() == self.memory().len() {
-            false => Err( Error::MismatchedSizes ),
-            true => {
-                *self.shape_mut() = shape;
-                Ok( () )
-            }
-        }
-    }
-
-    /// Fill the [`Tensor`] with a given value.
-    ///
-    fn fill( &mut self, value: T ) {
-        for i in 0..self.memory().len() {
-            self.memory_mut()[ i ] = value;
-        }
-    }
-
-    /// Clear the [`Tensor`].
-    fn clear( &mut self ) {
-        self.fill( T::default() );
-    }
 
     /// Get the flat index of a multi-dimensional index.
     ///
-    fn idx( &self, index: &[usize; ORD] ) -> usize {
+    fn idx( &self, index: &[usize; ORD] ) -> usize
+    where
+        Self: DynShaped<ORD>
+    {
         let dim = self.shape().ord();
         let mut idx = 0;
         let mut stride = 1;
@@ -298,6 +267,150 @@ where
 
     fn slice<'a>( &'a mut self, start: Shape<ORD>, end: Shape<ORD>, strides: Shape<ORD> ) -> Slice<'a, T, ORD, Heap> {
         Slice::new( self, start, end, strides )
+    }
+}
+
+impl<T, const ORD: usize, M> ConstOrder for Tensor<T, ORD, M>
+where
+    T: Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>,
+    Self: Clone
+{
+    const ORD: usize = ORD;
+}
+
+impl<T, const ORD: usize, M> DynShaped<ORD> for Tensor<T, ORD, M>
+where
+    T: Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
+{
+    fn shape( &self ) -> Shape<ORD> {
+        self.shape
+    }
+}
+
+impl<T, const ORD: usize, M> DynSized for Tensor<T, ORD, M>
+where
+    T: Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
+{
+    fn size( &self ) -> usize {
+        self.memory.len()
+    }
+}
+
+impl<T, const ORD: usize> DynReShapeable<ORD> for Tensor<T, ORD, Heap>
+where
+    T: 'static + Copy + Default + Debug,
+    Memory<T, Heap>: MemoryTraits<Type = T>
+{
+    fn reshape( &mut self, shape: Shape<ORD> ) {
+        match shape.vol() == self.memory().len() {
+            false => panic!( "Mismatched sizes" ),
+            true => {
+                *self.shape_mut() = shape;
+            }
+        }
+    }
+}
+
+impl<T, const ORD: usize> DynReSizeable<ORD> for Tensor<T, ORD, Heap>
+where
+    T: 'static + Copy + Default + Debug,
+    Memory<T, Heap>: MemoryTraits<Type = T>
+{
+    fn resize( &mut self, shape: Shape<ORD> ) {
+        self.memory_mut().resize( shape.vol(), T::default() );
+        *self.shape_mut() = shape;
+    }
+}
+
+impl<T, const OLD_ORD: usize, const NEW_ORD: usize, M> DynReOrder<NEW_ORD, Tensor<T, NEW_ORD, M>> for Tensor<T, OLD_ORD, M>
+where
+    T: Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
+{
+    fn reorder( self, shape: Shape<NEW_ORD> ) -> Tensor<T, NEW_ORD, M> {
+        if shape.vol() != self.memory().len() {
+            panic!( "Mismatched sizes" );
+        }
+        Tensor::<T, NEW_ORD, M>{ shape, memory: self.memory }
+    }
+}
+
+impl<T, const ORD: usize, M> Flatten<Tensor<T, 1, M>> for Tensor<T, ORD, M>
+where
+    T: Default + Copy + Debug,
+    M: MemoryType,
+    Memory<T, M>: MemoryTraits<Type = T>
+{
+    fn flatten( self ) -> Tensor<T, 1, M> {
+        let shape = Shape::<1>::from([ self.memory.len() ]);
+        Tensor::<T, 1, M>{ shape, memory: self.memory }
+    }
+}
+
+impl<T, const ORD: usize> Fillable<T> for Tensor<T, ORD, Heap>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Heap>: MemoryTraits<Type = T>
+{
+    fn fill( &mut self, value: T ) {
+        self.memory_mut().fill( value );
+    }
+}
+
+impl<T, const ORD: usize, const N: usize> Fillable<T> for Tensor<T, ORD, Stack<N>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<N>>: MemoryTraits<Type = T>
+{
+    fn fill( &mut self, value: T ) {
+        self.memory_mut().fill( value );
+    }
+}
+
+impl<T, const ORD: usize> Zeroable<T> for Tensor<T, ORD, Heap>
+where
+    T: Default + Copy + Debug + Num,
+    Memory<T, Heap>: MemoryTraits<Type = T>
+{
+    fn zero( &mut self ) {
+        self.memory_mut().fill( T::zero() );
+    }
+}
+
+impl<T, const ORD: usize, const N: usize> Zeroable<T> for Tensor<T, ORD, Stack<N>>
+where
+    T: Default + Copy + Debug + Num,
+    Memory<T, Stack<N>>: MemoryTraits<Type = T>
+{
+    fn zero( &mut self ) {
+        self.memory_mut().fill( T::zero() );
+    }
+}
+
+impl<T, const ORD: usize> Clearable<T> for Tensor<T, ORD, Heap>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Heap>: MemoryTraits<Type = T>
+{
+    fn clear( &mut self ) {
+        self.memory_mut().fill( T::default() );
+    }
+}
+
+impl<T, const ORD: usize, const N: usize> Clearable<T> for Tensor<T, ORD, Stack<N>>
+where
+    T: Default + Copy + Debug,
+    Memory<T, Stack<N>>: MemoryTraits<Type = T>
+{
+    fn clear( &mut self ) {
+        self.memory_mut().fill( T::default() );
     }
 }
 
