@@ -12,6 +12,8 @@ use memory::{ stack::Stack, heap::Heap };
 
 use crate::{
     traits::{
+        Columns,
+        Rows,
         ConstOrder,
         ConstShaped,
         DynShaped,
@@ -97,24 +99,6 @@ where
         Self: ConstOrder
     {
         Self::ORD
-    }
-
-    /// Returns the number of columns in the [`Matrix`].
-    ///
-    /// The number of columns in a [`Matrix`] is always `COL`.
-    ///
-    #[inline(always)]
-    pub const fn cols() -> usize {
-        COL
-    }
-
-    /// Returns the number of rows in the [`Matrix`].
-    ///
-    /// The number of rows in a [`Matrix`] is always `ROW`.
-    ///
-    #[inline(always)]
-    pub const fn rows() -> usize {
-        ROW
     }
 
     /// Returns the total number of elements in the [`Matrix`].
@@ -273,6 +257,22 @@ where
             ( 0..ROW ).map( move |row| unsafe { &mut *matrix_ptr.add( Self::idx( col, row ) ) } ) // SAFETY: We ensure that we only yield each element once, so no aliasing occurs.
         })
     }
+}
+
+impl<T, const COL: usize, const ROW: usize> Columns for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    const COLS: usize = COL;
+}
+
+impl<T, const COL: usize, const ROW: usize> Rows for Matrix<T, COL, ROW>
+where
+    T: 'static + Copy + Default + Debug,
+    [ (); COL * ROW ]:
+{
+    const ROWS: usize = ROW;
 }
 
 impl<T, const COL: usize, const ROW: usize> ConstOrder for Matrix<T, COL, ROW>

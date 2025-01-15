@@ -10,6 +10,14 @@ use crate::{
     slice::Slice
 };
 
+pub trait Columns {
+    const COLS: usize;
+}
+
+pub trait Rows {
+    const ROWS: usize;
+}
+
 pub trait ConstOrder {
     const ORD: usize;
 }
@@ -60,6 +68,30 @@ pub trait DynReOrder<const NEW_ORD: usize, Res = Self> {
 
 pub trait Flatten<Res = Self> {
     fn flatten( self ) -> Res;
+}
+
+pub trait X<T> {
+    fn x( &self ) -> &T;
+}
+
+pub trait XMut<T> {
+    fn x_mut( &mut self ) -> &mut T;
+}
+
+pub trait Y<T> {
+    fn y( &self ) -> &T;
+}
+
+pub trait YMut<T> {
+    fn y_mut( &mut self ) -> &mut T;
+}
+
+pub trait Z<T> {
+    fn z( &self ) -> &T;
+}
+
+pub trait ZMut<T> {
+    fn z_mut( &mut self ) -> &mut T;
 }
 
 pub trait Sliceable<T, const ORD: usize, M>

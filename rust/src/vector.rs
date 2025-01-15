@@ -13,6 +13,13 @@ use arithmetic::{ AddAssignTo, SubAssignTo, MulAssignTo, DivAssignTo };
 
 use crate::{
     traits::{
+        X,
+        XMut,
+        Y,
+        YMut,
+        Z,
+        ZMut,
+        Columns,
         ConstOrder,
         ConstShaped,
         DynShaped,
@@ -83,15 +90,6 @@ where
         Self::ORD
     }
 
-    /// Returns the number of columns in the [`Vector`].
-    ///
-    /// The number of columns in a [`Vector`] is always the same as the size of the [`Vector`].
-    ///
-    #[inline(always)]
-    pub const fn cols() -> usize {
-        COL
-    }
-
     /// Returns the shape of the [`Vector`].
     ///
     /// The shape of a [`Vector`] is always a single column.
@@ -131,6 +129,67 @@ where
     pub fn iter_mut( &mut self ) -> impl Iterator<Item = &mut T> {
         self.0.iter_mut()
     }
+}
+
+impl<T, const COL: usize> X<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn x( &self ) -> &T {
+        &self[ 0 ]
+    }
+}
+
+impl<T, const COL: usize> XMut<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn x_mut( &mut self ) -> &mut T {
+        &mut self[ 0 ]
+    }
+}
+
+impl<T, const COL: usize> Y<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn y( &self ) -> &T {
+        &self[ 1 ]
+    }
+}
+
+impl<T, const COL: usize> YMut<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn y_mut( &mut self ) -> &mut T {
+        &mut self[ 1 ]
+    }
+}
+
+impl<T, const COL: usize> Z<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn z( &self ) -> &T {
+        &self[ 2 ]
+    }
+}
+
+impl<T, const COL: usize> ZMut<T> for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    fn z_mut( &mut self ) -> &mut T {
+        &mut self[ 2 ]
+    }
+}
+
+impl<T, const COL: usize> Columns for Vector<T, COL>
+where
+    T: 'static + Copy + Default + Debug
+{
+    const COLS: usize = COL;
 }
 
 impl<T, const COL: usize> ConstOrder for Vector<T, COL>
