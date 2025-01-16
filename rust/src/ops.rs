@@ -1,5 +1,43 @@
 // Copyright 2024 Bewusstsein Labs
 
+pub trait Magnitude {
+    type Output;
+
+    fn magnitude( &self ) -> Self::Output;
+}
+
+pub trait Normalize {
+    type Output;
+
+    fn normalize( self ) -> Self::Output;
+}
+
+pub trait NormalizeAssign {
+    fn normalize_assign( &mut self );
+}
+
+pub trait NormalizeAssignTo {
+    type Output;
+
+    fn normalize_assign_to( self, res: &mut Self::Output );
+}
+
+pub trait Inverse {
+    type Output;
+
+    fn inverse( self ) -> Self::Output;
+}
+
+pub trait InverseAssign {
+    fn inverse_assign( &mut self );
+}
+
+pub trait InverseAssignTo {
+    type Output;
+
+    fn inverse_assign_to( self, res: &mut Self::Output );
+}
+
 /// The append operator.
 ///
 pub trait Append<Rhs = Self> {

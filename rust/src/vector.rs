@@ -5,7 +5,7 @@
 use std::{
     default, fmt::Debug, ops::{ Add, AddAssign, Deref, DerefMut, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign }
 };
-use num::traits::Num;
+use num::traits::{ Num, Float };
 
 use const_expr_bounds::{ Assert, IsTrue };
 use memory::{ stack::Stack, heap::Heap };
@@ -33,6 +33,8 @@ use crate::{
         Clearable
     },
     ops::{
+        Magnitude,
+        Inverse,
         Append,
         AppendAssignTo,
         Split,
@@ -1010,6 +1012,17 @@ where
     fn div_assign_to( self, scalar: T, res: &mut Self::Output ) {
         self.iter().zip( res.iter_mut() )
             .for_each( |( &a, c )| *c = a / scalar );
+    }
+}
+
+impl<T, const COL: usize> Magnitude for Vector<T, COL>
+where
+    T: Default + Copy + Debug + Mul<Output = T> + Add<Output = T> + Num + Float
+{
+    type Output = T;
+
+    fn magnitude( &self ) -> Self::Output {
+        self.iter().fold( T::default(), |acc, &a| acc + a * a ).sqrt()
     }
 }
 
