@@ -38,6 +38,22 @@ pub trait InverseAssignTo {
     fn inverse_assign_to( self, res: &mut Self::Output );
 }
 
+pub trait Conjugate {
+    type Output;
+
+    fn conjugate( self ) -> Self::Output;
+}
+
+pub trait ConjugateAssign {
+    fn conjugate_assign( &mut self );
+}
+
+pub trait ConjugateAssignTo {
+    type Output;
+
+    fn conjugate_assign_to( self, res: &mut Self::Output );
+}
+
 /// The append operator.
 ///
 pub trait Append<Rhs = Self> {

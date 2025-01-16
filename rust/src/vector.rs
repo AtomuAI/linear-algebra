@@ -3,7 +3,9 @@
 //mod test;
 
 use std::{
-    default, fmt::Debug, ops::{ Add, AddAssign, Deref, DerefMut, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign }
+    default,
+    fmt::Debug,
+    ops::{ Neg, Add, AddAssign, Deref, DerefMut, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign }
 };
 use num::traits::{ Num, Float };
 
@@ -363,6 +365,19 @@ where
 {
     fn eq( &self, other: &Self ) -> bool {
         self.0 == other.0
+    }
+}
+
+impl<T, const COL: usize> Neg for Vector<T, COL>
+where
+    T: Default + Copy + Debug + Neg<Output = T>,
+{
+    type Output = Self;
+
+    fn neg( mut self ) -> Self::Output {
+        self.iter_mut()
+            .for_each( |a| *a = -*a );
+        self
     }
 }
 
